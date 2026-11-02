@@ -1,0 +1,34 @@
+{
+  "name": "hometown-seed-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:api": "node --test tests/api.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1",
+    "d3-quadtree": "^3.0.1",
+    "next": "^15.5.27",
+    "postgres": "^3.4.7",
+    "react": "^19.1.10",
+    "react-dom": "^19.1.10",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.1",
+    "@types/d3-quadtree": "^3.0.6",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/topojson-client": "^3.1.5",
+    "@types/topojson-specification": "^1.0.5",
+    "typescript": "^5.8.3"
+  }
+}

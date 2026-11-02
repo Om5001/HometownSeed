@@ -24,3 +24,20 @@ def test_parse_crosswalk_uds_format(tmp_path):
     assert rows["11202"]["zcta"] == "11201"
     assert rows["00601"]["zcta"] == "00601"
     assert rows["11234"]["state"] == "NY"
+
+
+def test_clean_place_name():
+    assert geo.clean_place_name("Abbeville city") == "Abbeville"
+    assert geo.clean_place_name("Nashville-Davidson metropolitan government (balance)") == "Nashville-Davidson"
+    assert geo.clean_place_name("Bethesda CDP") == "Bethesda"
+
+
+def test_label_prefers_smallest_containing_place():
+    places = [
+        {"name": "Big City", "state": "CA", "lat": 34.05, "lon": -118.25, "sqmi": 470},
+        {"name": "Small Town", "state": "CA", "lat": 34.07, "lon": -118.40, "sqmi": 5.7},
+    ]
+    zctas = [{"zcta": "90210", "lat": 34.072, "lon": -118.401}, {"zcta": "99999", "lat": 10.0, "lon": 10.0}]
+    out = {r["zcta"]: r for r in geo.label_zctas(zctas, places)}
+    assert out["90210"]["place_name"] == "Small Town"
+    assert out["99999"]["place_name"] is None

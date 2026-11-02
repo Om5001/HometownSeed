@@ -1,4 +1,11 @@
-# zip-giving-data
+# Hometown Seed
+
+Two parts in one repo:
+
+- **Data pipeline** (this README): pulls Census child counts by ZIP into Postgres every month.
+- **Web app** (`web/`, see [web/README.md](web/README.md)): campaigns, matching, pooling and invites on top of that data.
+
+## Data pipeline
 
 Data pipeline that estimates how many children (likely Trump Account beneficiaries)
 live in each U.S. ZIP code, loads it into Postgres, and exposes SQL functions your

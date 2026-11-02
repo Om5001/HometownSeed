@@ -53,8 +53,19 @@ def cmd_refresh(args) -> None:
             gy = args.gazetteer_year or args.year
             with db.run_log(conn, "zcta_geo", {"year": gy}) as st:
                 rows = geo.fetch_gazetteer(gy)
+                try:  # label each ZIP area with its nearest city/town name
+                    labels = {r["zcta"]: r for r in geo.label_zctas(rows, geo.fetch_places(gy))}
+                    for r in rows:
+                        r.update({k: labels[r["zcta"]][k] for k in ("place_name", "place_state")})
+                except Exception as exc:  # names are nice-to-have; never block the data load
+                    print(f"warning: place names skipped ({exc})")
+                    for r in rows:
+                        r.setdefault("place_name", None); r.setdefault("place_state", None)
                 st["rows"] = db.upsert(conn, "zcta_geo", rows, key=["zcta"])
-                print(f"zcta_geo: {st['rows']} rows from {gy} Gazetteer")
+                print(f"zcta_geo: {st['rows']} rows from {gy} Gazetteer (with place names)")
+        conn.execute("refresh materialized view zcta_stats")  # app's fast per-ZIP table
+        conn.commit()
+        print("zcta_stats refreshed")
 
 
 def cmd_load_crosswalk(args) -> None:
