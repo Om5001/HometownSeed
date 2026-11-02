@@ -4,7 +4,8 @@ import { db } from "./db";
 export type Rules = { min_beneficiaries: number; min_per_child_cents: number; income_threshold: number; max_age: number };
 export type CampaignRow = {
   id: string; slug: string; name: string; description: string | null; mode: "solo" | "match" | "friends";
-  status: string; goal: number; raised: number; donors: number; kids: number; kids_u18: number;
+  goal_type: "total" | "per_child" | "open"; open_to_matching: boolean; invite_friends: boolean;
+  status: string; goal: number | null; raised: number; donors: number; kids: number; kids_u18: number;
   zip_count: number; meets_min: boolean; all_low_income: boolean; min_age: number; max_age: number;
   pool_id: string | null; created_at: string; is_demo: boolean; goal_pc: number | null; raised_pc: number | null;
   owner_id: string; owner_name: string; invite_code: string; places: string[]; lat: number | null; lon: number | null;
@@ -24,7 +25,7 @@ export async function getRules(): Promise<Rules> {
 }
 
 const campaignSelect = (sql: ReturnType<typeof db>) => sql`
-  select s.id, s.slug, s.name, s.description, s.mode, s.status,
+  select s.id, s.slug, s.name, s.description, s.mode, s.status, s.goal_type, s.open_to_matching, s.invite_friends,
          s.goal_cents::float8 as goal, s.raised_cents::float8 as raised, s.donors::int as donors,
          s.kids_in_class::float8 as kids, s.kids_u18::float8 as kids_u18, s.zip_count, s.meets_min, s.all_low_income,
          s.min_age, s.max_age, s.pool_id, s.created_at, s.is_demo, s.owner_id, s.invite_code,
@@ -72,7 +73,7 @@ export async function getCampaign(slug: string) {
       select u.id, u.display_name, m.role from campaign_members m join app_users u on u.id = m.user_id
       where m.campaign_id = ${c.id} order by m.role = 'owner' desc, m.joined_at`,
     c.pool_id
-      ? sql`select p.id, p.name, p.zip_count, p.kids_in_class::float8 as kids, p.kids_u18::float8 as kids_u18, p.meets_min,
+      ? sql`select p.id, p.name, p.status, p.zip_count, p.kids_in_class::float8 as kids, p.kids_u18::float8 as kids_u18, p.meets_min,
                    p.raised_cents::float8 as raised, p.goal_cents::float8 as goal, p.raised_per_child_cents::float8 as raised_pc,
                    (select json_agg(json_build_object('slug', x.slug, 'name', x.name) order by x.created_at)
                       from campaigns x where x.pool_id = p.id) as campaigns

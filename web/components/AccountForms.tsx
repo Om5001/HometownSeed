@@ -43,8 +43,14 @@ export function AccountForms({ name }: { name: string }) {
           <label className="field"><span>Your password</span><input className="input" type="password" value={dPw} onChange={(e) => setDPw(e.target.value)} autoComplete="current-password" /></label>
           <label className="field"><span>Type DELETE to confirm</span><input className="input" value={dConf} onChange={(e) => setDConf(e.target.value)} /></label>
         </div>
-        <button className="btn btn-sm" style={{ background: "var(--red)", color: "#fff", alignSelf: "flex-start" }} disabled={dConf !== "DELETE" || !dPw}
-          onClick={async () => { try { await post("/api/account/delete", { password: dPw, confirm: dConf }); location.href = "/?deleted=1"; } catch (e) { setDMsg((e as Error).message); } }}>Delete my account</button>
+        <button className="btn btn-sm" style={{ background: "var(--red)", color: "#fff", alignSelf: "flex-start" }}
+          onClick={async () => {
+            if (dConf.trim().toUpperCase() !== "DELETE") return setDMsg("Type DELETE in the box to confirm.");
+            if (!dPw) return setDMsg("Enter your password.");
+            setDMsg("Deleting…");
+            try { await post("/api/account/delete", { password: dPw, confirm: "DELETE" }); location.href = "/?deleted=1"; }
+            catch (e) { setDMsg((e as Error).message); }
+          }}>Delete my account</button>
         {dMsg && <p className="err">{dMsg}</p>}
       </section>
     </div>

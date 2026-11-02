@@ -7,11 +7,12 @@ import { fmt, moneyC } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; deleted?: string }> }) {
+  const { q, deleted } = await searchParams;
   const [stats, camps, rules] = await Promise.all([homeStats(), listCampaigns({ q, limit: 12 }), getRules()]);
   return (
     <main>
+      {deleted && <div className="wrap" style={{ paddingTop: 16 }}><p className="notice"><b>Your account was deleted.</b> Your sessions, profile and matches are gone. Thanks for being part of Hometown Seed.</p></div>}
       <section className="wrap hero">
         <div className="hero-grid">
           <div>

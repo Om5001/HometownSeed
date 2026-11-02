@@ -123,3 +123,30 @@ export function ShareButton({ path }: { path: string }) {
     if (navigator.share) navigator.share({ url }).catch(() => {}); else { navigator.clipboard?.writeText(url); setT("Link copied"); }
   }}>{t}</button>;
 }
+
+export function ConfirmCoalitionButton({ slug }: { slug: string }) {
+  const router = useRouter(); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  return (<>
+    <button className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={async () => {
+      setBusy(true); setErr("");
+      try { await post(`/api/campaigns/${slug}/coalition`, {}); router.refresh(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+    }}>{busy ? "Confirming…" : "We're ready: form the coalition"}</button>
+    {err && <p className="err">{err}</p>}
+  </>);
+}
+
+export function CampaignSettings({ slug, matching, friends }: { slug: string; matching: boolean; friends: boolean }) {
+  const router = useRouter(); const [m, setM] = useState(matching); const [f, setF] = useState(friends); const [msg, setMsg] = useState("");
+  const save = async (nm: boolean, nf: boolean) => {
+    setM(nm); setF(nf);
+    try { await post(`/api/campaigns/${slug}/settings`, { open_to_matching: nm, invite_friends: nf }); setMsg("Saved."); router.refresh(); }
+    catch (x) { setMsg((x as Error).message); }
+  };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <label className="check"><input type="checkbox" checked={m} onChange={(e) => save(e.target.checked, f)} /><span>Match with others (show in matching and allow pooling)</span></label>
+      <label className="check"><input type="checkbox" checked={f} onChange={(e) => save(m, e.target.checked)} /><span>Invite friends as co-organizers</span></label>
+      <p className="small muted">{!m && !f ? "Running on your own." : ""} {msg}</p>
+    </div>
+  );
+}

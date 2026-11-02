@@ -17,7 +17,7 @@ export function MatchCard({ m, rules, action }: { m: Match; rules: Rules; action
       </div>
       <div className="stats3">
         <span><b>{perChild(m.their_goal_per_child)}</b> goal/child{m.my_goal_per_child ? <> (yours {perChild(m.my_goal_per_child)})</> : null}</span>
-        {m.raised !== undefined && <span><b>{moneyC(m.raised)}</b> of {moneyC(m.goal)}</span>}
+        {m.raised !== undefined && <span><b>{moneyC(m.raised)}</b> {m.goal ? `of ${moneyC(m.goal)}` : "raised, open goal"}</span>}
         <span><b>{fmt(m.combined_kids_u18)}</b> kids together{m.combined_kids_u18 >= rules.min_beneficiaries ? " ✓" : ""}</span>
       </div>
       <div className="tags">{m.reasons.map((r) => <span key={r} className="tag">{r}</span>)}</div>

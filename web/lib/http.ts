@@ -40,6 +40,7 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       const code = (e as { code?: string }).code;
       if (code === "42P01" || code === "42703" || code === "42883")
         return fail("The database is missing the latest setup. Stop the site and run: npm run migrate", 500);
+      if (process.env.NODE_ENV !== "production") return fail("Server error: " + ((e as Error).message || String(e)), 500);
       return fail("Something went wrong. Please try again.", 500);
     }
   };

@@ -182,3 +182,102 @@ create table if not exists audit_log (
     entity_id   text,
     detail      jsonb
 );
+
+-- Goal types and run options (added later; safe to re-run) ----------------------
+-- goal_type: 'total' = a dollar total, 'per_child' = dollars per child (total follows
+-- the kid count), 'open' = no target, just raise. Matching and friend invites can both
+-- be on; both off means the campaign runs on its own.
+do $$
+begin
+    if not exists (select 1 from information_schema.columns where table_name = 'campaigns' and column_name = 'goal_type') then
+        alter table campaigns add column goal_type text not null default 'total' check (goal_type in ('total', 'per_child', 'open'));
+        alter table campaigns add column goal_per_child_cents bigint check (goal_per_child_cents is null or goal_per_child_cents >= 1);
+        alter table campaigns add column open_to_matching boolean not null default true;
+        alter table campaigns add column invite_friends boolean not null default false;
+        update campaigns set open_to_matching = (mode <> 'solo'), invite_friends = (mode = 'friends');
+        alter table campaigns alter column goal_cents drop not null;
+        alter table campaigns drop constraint if exists campaigns_goal_cents_check;
+        alter table campaigns add constraint campaigns_goal_cents_check check (goal_cents is null or goal_cents >= 10000);
+    end if;
+end $$;
+
+-- Coalitions: a pool that has agreed to go to Treasury together -----------------
+alter table pools add column if not exists status text not null default 'forming';
+alter table pools drop constraint if exists pools_status_check;
+alter table pools add constraint pools_status_check
+    check (status in ('forming', 'confirmed', 'approved', 'submitted', 'funded'));
+
+-- Each campaign in the coalition says "we're ready to go ahead".
+create table if not exists coalition_confirmations (
+    pool_id       uuid not null references pools(id) on delete cascade,
+    campaign_id   uuid not null references campaigns(id) on delete cascade,
+    user_id       uuid references app_users(id) on delete set null,
+    confirmed_at  timestamptz not null default now(),
+    primary key (pool_id, campaign_id)
+);
+
+-- The coalition agreement: a frozen snapshot of who, where, how much. Approvals
+-- bind to one version (by its SHA-256); any change makes a new version.
+create table if not exists coalition_documents (
+    id            uuid primary key default gen_random_uuid(),
+    pool_id       uuid not null references pools(id) on delete cascade,
+    version       integer not null,
+    content       jsonb not null,
+    content_hash  text not null,
+    status        text not null default 'active' check (status in ('active', 'superseded')),
+    created_at    timestamptz not null default now(),
+    unique (pool_id, version)
+);
+
+create table if not exists document_approvals (
+    document_id   uuid not null references coalition_documents(id) on delete cascade,
+    campaign_id   uuid not null references campaigns(id) on delete cascade,
+    user_id       uuid references app_users(id) on delete set null,
+    signed_name   text not null check (length(signed_name) between 2 and 80),
+    approved_at   timestamptz not null default now(),
+    primary key (document_id, campaign_id)
+);
+
+-- Anything that changes a coalition's membership sends it back to "forming".
+create or replace function reset_coalition(p_pool uuid) returns void language sql as $$
+    delete from coalition_confirmations where pool_id = p_pool;
+    delete from treasury_submissions where pool_id = p_pool and status = 'draft';
+    update coalition_documents set status = 'superseded' where pool_id = p_pool and status = 'active';
+    update pools set status = 'forming' where id = p_pool and status in ('confirmed', 'approved');
+$$;
+
+-- Treasury application (mock until a partner charity and email are connected) --
+-- Pool lifecycle: forming -> confirmed (agreement drafted) -> approved (agreement signed)
+--   -> submitted (application sent to Treasury) -> accepted (Treasury approved; final
+--   agreement executed) -> funded (charity paid Treasury by ACH/wire) -> distributed.
+alter table pools drop constraint if exists pools_status_check;
+alter table pools add constraint pools_status_check
+    check (status in ('forming', 'confirmed', 'approved', 'submitted', 'accepted', 'rejected', 'funded', 'distributed'));
+
+alter table treasury_submissions add column if not exists application      jsonb;   -- the filled application
+alter table treasury_submissions add column if not exists application_hash text;    -- SHA-256 of it
+alter table treasury_submissions add column if not exists mock             boolean not null default true;
+alter table treasury_submissions add column if not exists payment          jsonb;   -- method, reference, amount, date
+
+-- Outgoing messages. Until an email service is connected, rows stay 'mock' and are
+-- shown in the app instead of being sent.
+create table if not exists outbox (
+    id               uuid primary key default gen_random_uuid(),
+    pool_id          uuid references pools(id) on delete set null,
+    direction        text not null default 'out' check (direction in ('out', 'in')),  -- 'in' = simulated reply
+    to_address       text not null,
+    from_address     text not null,
+    subject          text not null,
+    body             text not null,
+    attachment_name  text,
+    status           text not null default 'mock' check (status in ('mock', 'queued', 'sent', 'failed')),
+    created_at       timestamptz not null default now()
+);
+create index if not exists outbox_pool_idx on outbox (pool_id, created_at);
+
+create or replace function reset_coalition(p_pool uuid) returns void language sql as $$
+    delete from coalition_confirmations where pool_id = p_pool;
+    delete from treasury_submissions where pool_id = p_pool and status = 'draft';
+    update coalition_documents set status = 'superseded' where pool_id = p_pool and status = 'active';
+    update pools set status = 'forming' where id = p_pool and status in ('confirmed', 'approved', 'rejected');
+$$;

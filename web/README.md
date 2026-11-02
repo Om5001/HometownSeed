@@ -38,6 +38,7 @@ The database tables and functions come from `../sql/` and are applied by the pip
 | `app/profile/`, `components/ProfileForm.tsx` | Giving profile: places, radius, cash/stock/DAF, budget, $ per child, age group, area income focus |
 | `app/match/`, `components/SwipeDeck.tsx` | Swipe deck of campaigns and givers, ranked by location, then $ per child (`match_deck` in `sql/005`) |
 | `app/connections/` | Mutual matches, saved campaigns, invites; start a campaign together |
+| `lib/coalition.ts`, `components/Tracker.tsx`, `app/coalitions/` | Campaign tracker (created, coalition formed, agreement approved, money sent), coalition agreement document with signatures, Treasury request draft |
 | `middleware.ts` | Sends signed-out visitors from gated pages to sign-in |
 | `lib/payments.ts` | **Prototype** payments seam (pledges only). Connect the charity's processor here |
 

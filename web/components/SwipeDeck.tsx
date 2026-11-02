@@ -97,7 +97,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
                 <div><span className="num">{c.miles === null ? "—" : c.miles < 1 ? "<1" : fmt(c.miles)}</span><small>miles away</small></div>
                 <div><span className="num">{c.per_child_cents ? perChild(c.per_child_cents) : "—"}</span><small>{c.kind === "campaign" ? "goal per child" : "per child"}</small></div>
                 {c.kind === "campaign"
-                  ? <div><span className="num">{fmt(c.kids)}</span><small>kids · {moneyC(c.raised_cents)} of {moneyC(c.goal_cents)}</small></div>
+                  ? <div><span className="num">{fmt(c.kids)}</span><small>kids · {moneyC(c.raised_cents)} {c.goal_cents ? `of ${moneyC(c.goal_cents)}` : "raised"}</small></div>
                   : <div><span className="num">{c.goal_cents ? moneyC(c.goal_cents) : "—"}</span><small>hopes to give</small></div>}
               </div>
               <div className="tags">

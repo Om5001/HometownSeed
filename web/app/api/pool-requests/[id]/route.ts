@@ -24,6 +24,9 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const poolId = await sql.begin(async (tx) => {
     const cs = await tx<{ id: string; name: string; pool_id: string | null; min_age: number; max_age: number }[]>`
       select id, name, pool_id, min_age, max_age from campaigns where id in (${r.from_campaign}, ${r.to_campaign}) for update`;
+    const locked = await tx`select 1 from pools where id in (select pool_id from campaigns where id in (${r.from_campaign}, ${r.to_campaign}))
+                            and status in ('submitted', 'accepted', 'funded', 'distributed')`;
+    if (locked.length) throw new HttpError(400, "One of these coalitions has already gone to Treasury, so it can't take new members.");
     const a = cs.find((c) => c.id === r.to_campaign)!, b = cs.find((c) => c.id === r.from_campaign)!;
     if (a.min_age !== b.min_age || a.max_age !== b.max_age) throw new HttpError(400, "Age groups no longer match.");
     let pool = a.pool_id ?? b.pool_id;
@@ -38,6 +41,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       await tx`delete from pools where id = ${o}`;
     }
     await tx`update campaigns set pool_id = ${pool}, updated_at = now() where id in (${a.id}, ${b.id})`;
+    await tx`select reset_coalition(${pool})`;  // new members: everyone confirms and approves again
     await tx`update pool_requests set status = 'accepted', decided_at = now() where id = ${id}`;
     return pool;
   });

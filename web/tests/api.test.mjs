@@ -8,7 +8,7 @@ const stamp = Date.now().toString(36);
 
 function client() {
   let cookie = "";
-  return async (path, body) => {
+  const fn = async (path, body) => {
     const r = await fetch(BASE + path, {
       method: body === undefined ? "GET" : "POST",
       headers: { "content-type": "application/json", cookie },
@@ -19,6 +19,8 @@ function client() {
     let data; try { data = JSON.parse(text); } catch { data = text; }
     return { status: r.status, data };
   };
+  fn.cookie = () => cookie;
+  return fn;
 }
 
 const PW = "correct horse battery";
@@ -186,4 +188,112 @@ test("account security: lockout delay, reset, change password, delete", { skip }
   assert.equal(one.data.campaign.owner_name, "Gus");
   const two = await client()(`/api/campaigns/${c2.data.slug}`);
   assert.equal(two.data.campaign.status, "closed");
+});
+
+test("goal types, run options, and the coalition tracker", { skip }, async () => {
+  const hal = client(), ivy = client(), joe = client();
+  await signup(hal, "Hal"); await signup(ivy, "Ivy"); await signup(joe, "Joe");
+
+  // goal per child: total follows the kid count
+  const pc = await hal("/api/campaigns", { name: `Per Child ${stamp}`, zips: ["11234"], goalType: "per_child", goalPerChildCents: 2500, openToMatching: true, inviteFriends: true });
+  assert.equal(pc.status, 201, JSON.stringify(pc.data));
+  const pcv = (await hal(`/api/campaigns/${pc.data.slug}`)).data.campaign;
+  assert.equal(pcv.goal_type, "per_child");
+  assert.equal(Math.round(pcv.goal_pc), 2500);
+  assert.equal(pcv.goal, Math.round(pcv.kids * 2500));
+  assert.equal(pcv.open_to_matching, true); assert.equal(pcv.invite_friends, true);
+
+  // open goal, matching only
+  const open = await ivy("/api/campaigns", { name: `Open Goal ${stamp}`, zips: ["11236"], goalType: "open", openToMatching: true, inviteFriends: false });
+  assert.equal(open.status, 201);
+  assert.equal((await ivy(`/api/campaigns/${open.data.slug}`)).data.campaign.goal, null);
+
+  // on its own: can't pool
+  const solo = await joe("/api/campaigns", { name: `Solo ${stamp}`, zips: ["11210"], goalType: "total", goalCents: 500000, openToMatching: false, inviteFriends: false });
+  assert.equal((await joe(`/api/campaigns/${solo.data.slug}/pool-requests`, { toSlug: pc.data.slug })).status, 400);
+  assert.equal((await hal(`/api/campaigns/${pc.data.slug}/pool-requests`, { toSlug: solo.data.slug })).status, 400);
+  assert.equal((await hal("/api/campaigns", { name: "Bad", zips: ["11234"], goalType: "per_child", goalPerChildCents: 0 })).status, 400);
+
+  // pledges, then pool Hal + Ivy
+  await joe(`/api/campaigns/${pc.data.slug}/pledges`, { amountCents: 50000 });
+  await joe(`/api/campaigns/${open.data.slug}/pledges`, { amountCents: 70000 });
+  const req = await hal(`/api/campaigns/${pc.data.slug}/pool-requests`, { toSlug: open.data.slug });
+  assert.equal(req.status, 201, JSON.stringify(req.data));
+  assert.equal((await ivy(`/api/pool-requests/${req.data.id}`, { action: "accept" })).status, 200);
+
+  // step 2: both confirm
+  assert.equal((await joe(`/api/campaigns/${pc.data.slug}/coalition`, {})).status, 403, "non-organizer can't confirm");
+  const c1 = await hal(`/api/campaigns/${pc.data.slug}/coalition`, {});
+  assert.equal(c1.data.status, "forming");
+  const c2 = await ivy(`/api/campaigns/${open.data.slug}/coalition`, {});
+  assert.equal(c2.data.status, "confirmed");
+  const poolId = c2.data.poolId;
+
+  // the agreement exists and is private
+  const page = await hal(`/coalitions/${poolId}`);
+  assert.match(page.data, /Coalition agreement/);
+  assert.match(page.data, /Hal/); assert.match(page.data, /Ivy/);
+  assert.match(page.data, /\$1,200/);  // 500 + 700 pledged
+  assert.match((await joe(`/coalitions/${poolId}`)).data, /This agreement is private/);
+  const docId = (page.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
+  assert.ok(docId, "document id on the page");
+
+  // step 3: both sign
+  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: pc.data.slug, name: "Hal H", agree: false })).status, 400);
+  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: open.data.slug, name: "Hal H", agree: true })).status, 403);
+  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: pc.data.slug, name: "Hal H", agree: true })).data.status, "confirmed");
+  assert.equal((await ivy(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: open.data.slug, name: "Ivy I", agree: true })).data.status, "approved");
+  const after = await hal(`/c/${pc.data.slug}`);
+  assert.match(after.data, /Everyone signed/);
+
+  // a new member resets the coalition to forming
+  const kai = client(); await signup(kai, "Kai");
+  const k = await kai("/api/campaigns", { name: `Late ${stamp}`, zips: ["11234"], goalType: "open" });
+  const r2 = await kai(`/api/campaigns/${k.data.slug}/pool-requests`, { toSlug: pc.data.slug });
+  assert.equal((await hal(`/api/pool-requests/${r2.data.id}`, { action: "accept" })).status, 200);
+  assert.match((await hal(`/coalitions/${poolId}`)).data, /Forming/);
+});
+
+test("Treasury application: prepare, PDF, send (mock), approve, pay, distribute", { skip }, async () => {
+  const lea = client(), max = client(), outsider = client();
+  await signup(lea, "Lea"); await signup(max, "Max"); await signup(outsider, "Ned");
+  const c = await lea("/api/campaigns", { name: `Treasury Run ${stamp}`, zips: ["11234"], goalType: "open" });
+  await max(`/api/campaigns/${c.data.slug}/pledges`, { amountCents: 150000 });
+  const conf = await lea(`/api/campaigns/${c.data.slug}/coalition`, {});
+  assert.equal(conf.data.status, "confirmed", "a coalition of one is confirmed at once");
+  const poolId = conf.data.poolId;
+  const page = await lea(`/coalitions/${poolId}`);
+  const docId = (page.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
+  // can't prepare before signing
+  const donor = { entity_name: "Brooklyn Community Foundation", entity_address: "1 Main St, Brooklyn, NY 11201", ein: "123456789",
+    entity_type: "501c3", rep_name: "Lea L", rep_title: "Executive Director", rep_address: "1 Main St, Brooklyn, NY 11201",
+    rep_email: "lea@example.org", rep_phone: "718-555-0100", amount_cents: 150000, recognition: true, recognition_name: "Marine Park neighbors",
+    signature: "Lea L", certify: true };
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, donor)).status, 400);
+  await lea(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: c.data.slug, name: "Lea L", agree: true });
+
+  assert.equal((await outsider(`/api/coalitions/${poolId}/application`, donor)).status, 403);
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, ein: "12" })).status, 400);
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, signature: "Someone Else" })).status, 400);
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, certify: false })).status, 400);
+  assert.equal((await lea(`/api/coalitions/${poolId}/submit`, {})).status, 400, "can't send before preparing");
+  const prep = await lea(`/api/coalitions/${poolId}/application`, donor);
+  assert.equal(prep.status, 200, JSON.stringify(prep.data));
+
+  const pdf = await fetch(BASE + `/api/coalitions/${poolId}/application/pdf`, { headers: { cookie: lea.cookie() } });
+  assert.equal(pdf.headers.get("content-type"), "application/pdf");
+  const bytes = Buffer.from(await pdf.arrayBuffer());
+  assert.equal(bytes.subarray(0, 4).toString(), "%PDF");
+  assert.equal((await fetch(BASE + `/api/coalitions/${poolId}/application/pdf`, { headers: { cookie: outsider.cookie() } })).status, 403);
+
+  const sent = await lea(`/api/coalitions/${poolId}/submit`, {});
+  assert.match(sent.data.reference, /^MOCK-TA-\d{8}-[0-9A-F]{6}$/);
+  assert.equal((await lea(`/api/coalitions/${poolId}/payment`, { method: "ach", reference: "x", amount_cents: 150000 })).status, 400, "no payment before approval");
+  assert.equal((await lea(`/api/coalitions/${poolId}/treasury-mock`, { action: "approve" })).data.status, "accepted");
+  assert.equal((await lea(`/api/coalitions/${poolId}/payment`, { method: "wire", reference: "FED-123", amount_cents: 150000 })).data.status, "funded");
+  assert.equal((await lea(`/api/coalitions/${poolId}/treasury-mock`, { action: "distribute" })).data.status, "distributed");
+  const done = await lea(`/coalitions/${poolId}`);
+  assert.match(done.data, /Distributed to children/);
+  assert.match(done.data, /To Treasury: (<!-- -->)?Qualified Class Contribution Application/);
+  assert.match((await lea(`/c/${c.data.slug}`)).data, /In kids/);
 });

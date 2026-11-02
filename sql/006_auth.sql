@@ -54,47 +54,40 @@ begin
     select email into v_email from app_users where id = p_user;
     if v_email is null then return; end if;
 
-    for c in select id from campaigns where owner_id = p_user loop
+    for c in select id, pool_id from campaigns where owner_id = p_user loop
         select m.user_id into heir from campaign_members m
         where m.campaign_id = c.id and m.user_id <> p_user
         order by m.joined_at limit 1;
         if heir is not null then
             update campaigns set owner_id = heir, updated_at = now() where id = c.id;
             update campaign_members set role = 'owner' where campaign_id = c.id and user_id = heir;
-        elsif not exists (select 1 from pledges where campaign_id = c.id) then
+        elsif not exists (select 1 from pledges where campaign_id = c.id)
+              and not exists (select 1 from treasury_submissions where campaign_id = c.id)
+              and not exists (select 1 from ledger_entries where campaign_id = c.id) then
+            if c.pool_id is not null then perform reset_coalition(c.pool_id); end if;
             delete from campaigns where id = c.id;
         else
             update campaigns set status = 'closed', owner_id = null, updated_at = now() where id = c.id;
         end if;
     end loop;
 
+    -- Detach everything that points at the person (explicit, so it never depends on FK settings)
     update pledges set donor_name = 'Deleted account', donor_email = null, is_anonymous = true, user_id = null
     where user_id = p_user;
-    delete from swipes where target_kind = 'person' and target_id = p_user;
+    update audit_log set actor_id = null where actor_id = p_user;
+    update pools set created_by = null where created_by = p_user;
+    update invites set accepted_by = null where accepted_by = p_user;
+    update pool_requests set requested_by = null where requested_by = p_user and status <> 'pending';
     delete from pool_requests where requested_by = p_user and status = 'pending';
-    delete from invites where lower(email) = lower(v_email) and accepted_by is null;
+    delete from invites where created_by = p_user or (lower(email) = lower(v_email) and accepted_by is null);
+    update coalition_confirmations set user_id = null where user_id = p_user;
+    update document_approvals set user_id = null where user_id = p_user;
+    delete from swipes where (target_kind = 'person' and target_id = p_user) or user_id = p_user;
     delete from login_attempts where lower(email) = lower(v_email);
+    delete from campaign_members where user_id = p_user;
+    delete from giving_profiles where user_id = p_user;
+    delete from auth_tokens where user_id = p_user;
+    delete from sessions where user_id = p_user;
     insert into audit_log (actor_id, action, entity, entity_id) values (null, 'account.delete', 'user', p_user::text);
-    delete from app_users where id = p_user;   -- sessions, tokens, profile, swipes, memberships cascade
-end $$;
-
--- Lock the database down ------------------------------------------------------
--- Supabase publishes every table in "public" through its REST API to anyone
--- holding the project's public (anon) key. The app talks to Postgres directly
--- as the table owner, so nothing needs that API: turn on row-level security
--- with no policies (deny all) and remove the API roles' access entirely.
-do $$
-declare t record;
-begin
-    for t in select tablename from pg_tables where schemaname = 'public' loop
-        execute format('alter table public.%I enable row level security', t.tablename);
-    end loop;
-    if exists (select 1 from pg_roles where rolname = 'anon') then
-        execute 'revoke all on all tables in schema public from anon, authenticated';
-        execute 'revoke all on all sequences in schema public from anon, authenticated';
-        execute 'revoke execute on all functions in schema public from anon, authenticated, public';
-        execute 'alter default privileges in schema public revoke all on tables from anon, authenticated';
-        execute 'alter default privileges in schema public revoke all on sequences from anon, authenticated';
-        execute 'alter default privileges in schema public revoke execute on functions from anon, authenticated, public';
-    end if;
+    delete from app_users where id = p_user;
 end $$;

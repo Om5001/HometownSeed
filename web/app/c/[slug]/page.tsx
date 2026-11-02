@@ -5,7 +5,9 @@ import { findMatches, getCampaign, getRules, memberRole } from "@/lib/queries";
 import { ageLabel, ago, fmt, initials, money, moneyC, perChild, placeLabel } from "@/lib/format";
 import { AreaMap } from "@/components/AreaMap";
 import { MatchCard } from "@/components/MatchCard";
-import { InvitePanel, PledgeForm, PoolButton, RequestButtons, ShareButton } from "@/components/CampaignActions";
+import { CampaignSettings, InvitePanel, PledgeForm, PoolButton, RequestButtons, ShareButton } from "@/components/CampaignActions";
+import { Tracker } from "@/components/Tracker";
+import { coalitionState } from "@/lib/coalition";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,10 @@ export default async function CampaignPage({ params, searchParams }: { params: P
   const pool = data.pool as Pool | null;
   const [user, rules] = await Promise.all([getUser(), getRules()]);
   const role = await memberRole(c.id, user?.id);
-  const matches = await findMatches(zips.map((z) => z.zcta), c.goal, c.min_age, c.max_age, c.id, 6);
+  const [matches, st] = await Promise.all([
+    findMatches(zips.map((z) => z.zcta), c.goal ?? 0, c.min_age, c.max_age, c.id, 6),
+    coalitionState(c),
+  ]);
   const pendingTo = new Set(outgoing.map((o) => o.to_campaign));
 
   // Treasury readiness is judged on the pool when pooled, otherwise on this campaign.
@@ -33,7 +38,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
     <main>
       <div className="wrap dash-head">
         <div className="crumbs"><Link className="back" href="/#campaigns">← All campaigns</Link></div>
-        {isNew && role && <p className="notice" style={{ marginBottom: 16 }}><b>Your campaign is live.</b> {c.mode === "friends" ? "Grab your invite link below." : c.mode === "match" ? "Check the matches below to pool with others." : "Share it to start collecting pledges."}</p>}
+        {isNew && role && <p className="notice" style={{ marginBottom: 16 }}><b>Your campaign is live.</b> {c.open_to_matching ? "Check the matches below to pool with others. " : ""}{c.invite_friends ? "Grab your invite link below. " : ""}{!c.open_to_matching && !c.invite_friends ? "Share it to start collecting pledges." : ""}</p>}
         <div className="title-row">
           <div style={{ minWidth: 0 }}>
             <h1>{c.name}</h1>
@@ -45,20 +50,21 @@ export default async function CampaignPage({ params, searchParams }: { params: P
 
       <div className="wrap grid">
         <div className="col">
+          <Tracker c={c} st={st} isOrganizer={!!role} minKids={rules.min_beneficiaries} />
           <section className="panel hero-panel">
             <div className="panel-head" style={{ marginBottom: 22 }}>
-              <span className="eyebrow">{c.mode === "solo" ? "Independent campaign" : c.mode === "friends" ? "Friends campaign" : "Open to matching"} · {c.zip_count} ZIP codes</span>
+              <span className="eyebrow">{[c.open_to_matching && "Open to matching", c.invite_friends && "Friends welcome"].filter(Boolean).join(" · ") || "Running on its own"} · {c.zip_count} ZIP codes</span>
               <span className="eyebrow">Started {ago(c.created_at).toLowerCase()}</span>
             </div>
             <div className="raised">
-              <div><div className="big">{money(c.raised)}</div><p className="of">pledged of a <b className="num">{money(c.goal)}</b> goal</p></div>
-              <div style={{ textAlign: "right" }}><div className="pct">{Math.floor(pct * 100)}%</div><p className="of">of goal</p></div>
+              <div><div className="big">{money(c.raised)}</div><p className="of">{c.goal ? <>pledged of a <b className="num">{money(c.goal)}</b> goal{c.goal_type === "per_child" ? ` (${perChild(c.goal_pc)} per child)` : ""}</> : "pledged so far · no set goal"}</p></div>
+              {c.goal ? <div style={{ textAlign: "right" }}><div className="pct">{Math.floor(pct * 100)}%</div><p className="of">of goal</p></div> : null}
             </div>
             <div className="bar" style={{ marginTop: 16 }}><span style={{ width: (pct * 100).toFixed(1) + "%" }} /></div>
             <div className="kpis">
               <div className="kpi"><span className="num">{fmt(c.donors)}</span><small>donors</small></div>
               <div className="kpi"><span className="num">{fmt(c.kids)}</span><small>kids</small></div>
-              <div className="kpi"><span className="num">{perChild(c.goal_pc)}</span><small>goal per kid</small></div>
+              <div className="kpi"><span className="num">{c.goal_pc ? perChild(c.goal_pc) : "Open"}</span><small>goal per kid</small></div>
               <div className="kpi"><span className="num">{perChild(c.raised_pc)}</span><small>per kid so far</small></div>
             </div>
             <div className="org">
@@ -124,19 +130,25 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <div className="panel-head"><div><p className="eyebrow">{role ? "Matches for your campaign" : "Related campaigns"}</p><h2 style={{ marginTop: 4 }}>Pile on or pool up</h2></div></div>
             {matches.length ? (
               <div className="mcards">{matches.map((m) => (
-                <MatchCard key={m.campaign_id} m={m} rules={rules} action={role && c.mode !== "solo" ? (
+                <MatchCard key={m.campaign_id} m={m} rules={rules} action={role && c.open_to_matching ? (
                   <PoolButton fromSlug={c.slug} toSlug={m.slug} pending={pendingTo.has(m.campaign_id)}
                     disabled={!m.same_age_class ? "Different age group" : pool && pool.campaigns.some((p) => p.slug === m.slug) ? "Already pooled" : undefined} />
                 ) : undefined} />
               ))}</div>
             ) : <p className="empty">No similar campaigns yet. When someone starts one nearby or at a similar amount per child, it will show up here.</p>}
-            {role && c.mode === "solo" && matches.length > 0 && <p className="small muted" style={{ marginTop: 10 }}>This campaign is set to run independently, so pooling is off.</p>}
+            {role && !c.open_to_matching && matches.length > 0 && <p className="small muted" style={{ marginTop: 10 }}>Matching is off for this campaign, so pooling is off. Turn it on in Settings.</p>}
           </section>
 
-          {role && (
+          {role && c.invite_friends && (
             <section className="panel">
               <div className="panel-head"><div><p className="eyebrow">Organize with friends</p><h2 style={{ marginTop: 4 }}>Invite co-organizers</h2></div></div>
               <InvitePanel slug={c.slug} />
+            </section>
+          )}
+          {role && (
+            <section className="panel">
+              <div className="panel-head"><h2>Settings</h2></div>
+              <CampaignSettings slug={c.slug} matching={c.open_to_matching} friends={c.invite_friends} />
             </section>
           )}
 

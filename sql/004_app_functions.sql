@@ -74,14 +74,23 @@ returns double precision language sql immutable as $$
 $$;
 
 -- Live stats for every campaign ------------------------------------------------
-create or replace view v_campaign_stats as
-select c.id, c.slug, c.name, c.description, c.mode, c.status, c.goal_cents,
+-- Views are rebuilt on every migrate so their columns can change.
+drop view if exists v_pool_stats;
+drop view if exists v_campaign_stats;
+create view v_campaign_stats as
+select c.id, c.slug, c.name, c.description, c.mode, c.status,
+       -- effective goal: a per-child goal grows with the kid count; an open goal has none
+       case c.goal_type when 'per_child' then round(c.goal_per_child_cents * s.kids_in_class)
+                        when 'open' then null else c.goal_cents end                            as goal_cents,
        c.min_age, c.max_age, c.pool_id, c.owner_id, c.invite_code, c.is_demo, c.created_at,
        s.zctas, s.zip_count, s.kids_in_class, s.kids_u18, s.meets_min, s.all_low_income, s.lat, s.lon,
        coalesce(p.raised_cents, 0)  as raised_cents,
        coalesce(p.donors, 0)        as donors,
-       case when s.kids_in_class > 0 then c.goal_cents / s.kids_in_class end              as goal_per_child_cents,
-       case when s.kids_in_class > 0 then coalesce(p.raised_cents, 0) / s.kids_in_class end as raised_per_child_cents
+       case c.goal_type when 'per_child' then c.goal_per_child_cents::numeric
+                        when 'open' then null
+                        else case when s.kids_in_class > 0 then c.goal_cents / s.kids_in_class end end as goal_per_child_cents,
+       case when s.kids_in_class > 0 then coalesce(p.raised_cents, 0) / s.kids_in_class end as raised_per_child_cents,
+       c.goal_type, c.open_to_matching, c.invite_friends
 from campaigns c
 cross join lateral area_stats(
     (select array_agg(zcta::text) from campaign_zips z where z.campaign_id = c.id), c.min_age, c.max_age) s
@@ -91,9 +100,9 @@ left join lateral (
     where pl.campaign_id = c.id and pl.status in ('pledged', 'pending', 'succeeded')
 ) p on true;
 
--- Pools: the union of their campaigns' ZIPs and money -------------------------
-create or replace view v_pool_stats as
-select pl.id, pl.name, pl.min_age, pl.max_age, pl.created_at,
+-- Pools (coalitions): the union of their campaigns' ZIPs and money -------------
+create view v_pool_stats as
+select pl.id, pl.name, pl.min_age, pl.max_age, pl.created_at, pl.status,
        (select array_agg(c.id) from campaigns c where c.pool_id = pl.id) as campaign_ids,
        s.zctas, s.zip_count, s.kids_in_class, s.kids_u18, s.meets_min, s.all_low_income, s.lat, s.lon,
        coalesce(m.raised_cents, 0) as raised_cents,

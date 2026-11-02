@@ -13,10 +13,8 @@ const AGES: { label: string; min: number; max: number }[] = [
   { label: "All kids under 18", min: 0, max: 17 }, { label: "Ages 0–5", min: 0, max: 5 },
   { label: "Ages 6–12", min: 6, max: 12 }, { label: "Ages 13–17", min: 13, max: 17 },
 ];
-const MODES = [
-  { id: "match", t: "Match me with others", d: "We suggest campaigns to pool with so your area reaches the minimums faster." },
-  { id: "friends", t: "Invite friends", d: "Get a link to bring friends in as co-organizers. You can still pool later." },
-  { id: "solo", t: "Run it on my own", d: "Your campaign stays independent. Others can still give to it." },
+const GOALS = [
+  { id: "total", t: "Total amount" }, { id: "per_child", t: "Amount per child" }, { id: "open", t: "No set goal, just raise" },
 ] as const;
 
 export function Builder({ rules, initial, partner, initialAge }: {
@@ -25,15 +23,19 @@ export function Builder({ rules, initial, partner, initialAge }: {
   const router = useRouter();
   const [zips, setZips] = useState<Z[]>(initial);
   const [age, setAge] = useState(initialAge ?? { min: 0, max: 17 });
-  const [goal, setGoal] = useState("");
-  const [mode, setMode] = useState<"match" | "friends" | "solo">("match");
+  const [goalType, setGoalType] = useState<"total" | "per_child" | "open">("total");
+  const [goal, setGoal] = useState(""); const [goalPc, setGoalPc] = useState("");
+  const [matching, setMatching] = useState(true); const [friends, setFriends] = useState(false);
   const [name, setName] = useState(""); const [desc, setDesc] = useState("");
   const [area, setArea] = useState<Area>(null); const [nearby, setNearby] = useState<(ZipRow & { miles?: number })[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
-  const goalCents = Math.round((Number(goal.replace(/[^0-9.]/g, "")) || 0) * 100);
+  const cents = (v: string) => Math.round((Number(v.replace(/[^0-9.]/g, "")) || 0) * 100);
+  const pcInput = cents(goalPc);
   const codes = useMemo(() => zips.map((z) => z.zcta), [zips]);
   const t = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const kidsNow = area?.kids_in_class ?? 0;
+  const matchGoal = goalType === "total" ? cents(goal) : goalType === "per_child" ? Math.round(pcInput * kidsNow) : 0;
 
   useEffect(() => {
     if (!codes.length) { setArea(null); setNearby([]); return; }
@@ -52,28 +54,31 @@ export function Builder({ rules, initial, partner, initialAge }: {
     clearTimeout(t.current);
     if (!codes.length) { setMatches([]); return; }
     t.current = setTimeout(() => {
-      fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ zips: codes, goalCents, minAge: age.min, maxAge: age.max }) })
+      fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ zips: codes, goalCents: matchGoal, minAge: age.min, maxAge: age.max }) })
         .then((r) => r.json()).then((m) => setMatches(Array.isArray(m) ? m : []));
     }, 400);
-  }, [codes.join(","), goalCents, age.min, age.max]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [codes.join(","), matchGoal, age.min, age.max]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = (z: ZipRow, suggested = false) => setZips((cur) => cur.some((c) => c.zcta === z.zcta) ? cur : [...cur, { ...z, suggested }]);
   const remove = (zcta: string) => setZips((cur) => cur.filter((z) => z.zcta !== zcta));
   const kids = area?.kids_in_class ?? 0, kidsAll = area?.kids_u18 ?? 0;
   const minTotal = kids * rules.min_per_child_cents;
-  const pc = kids ? goalCents / kids : 0;
+  // Whichever way the goal is entered, show both the total and the per-child amount.
+  const goalCents = goalType === "total" ? cents(goal) : goalType === "per_child" ? Math.round(pcInput * kids) : 0;
+  const pc = goalType === "per_child" ? pcInput : kids ? goalCents / kids : 0;
   const custom = !AGES.some((a) => a.min === age.min && a.max === age.max);
 
   const publish = async () => {
     setErr("");
     if (!codes.length) return setErr("Add at least one ZIP code.");
-    if (goalCents < 10000) return setErr("Set a goal of at least $100.");
+    if (goalType === "total" && goalCents < 10000) return setErr("Set a goal of at least $100, or pick another goal type.");
+    if (goalType === "per_child" && pcInput < 1) return setErr("Set an amount per child.");
     if (name.trim().length < 3) return setErr("Give your campaign a name.");
     setBusy(true);
     try {
       const r = await fetch("/api/campaigns", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, description: desc, zips: codes, suggestedZips: zips.filter((z) => z.suggested).map((z) => z.zcta), goalCents, minAge: age.min, maxAge: age.max, mode }),
+        body: JSON.stringify({ name, description: desc, zips: codes, suggestedZips: zips.filter((z) => z.suggested).map((z) => z.zcta), goalType, goalCents: goalType === "total" ? goalCents : undefined, goalPerChildCents: goalType === "per_child" ? pcInput : undefined, minAge: age.min, maxAge: age.max, openToMatching: matching, inviteFriends: friends }),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error); return; }
@@ -144,16 +149,27 @@ export function Builder({ rules, initial, partner, initialAge }: {
 
       <section className="panel bstep">
         <div className="subhead"><h3><span className="n">3</span>Goal</h3></div>
-        <div className="money"><input className="input" inputMode="decimal" placeholder="250,000" value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Goal in dollars" /></div>
-        {kids > 0 && (
-          <div className="chips">
-            {[25, 50, 100, 250].map((d) => (
-              <button type="button" key={d} className="chip-btn" onClick={() => setGoal(String(Math.ceil((kids * d) / 100) * 100))}>${d} per child · {money(Math.ceil((kids * d) / 100) * 10000)}</button>
-            ))}
-          </div>
-        )}
+        <div className="seg" role="group" aria-label="Goal type" style={{ flexWrap: "wrap" }}>
+          {GOALS.map((g) => <button type="button" key={g.id} aria-pressed={goalType === g.id} onClick={() => setGoalType(g.id)}>{g.t}</button>)}
+        </div>
+        {goalType === "total" && (<>
+          <div className="money"><input className="input" inputMode="decimal" placeholder="250,000" value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Goal in dollars" /></div>
+          {kids > 0 && (
+            <div className="chips">
+              {[25, 50, 100, 250].map((d) => (
+                <button type="button" key={d} className="chip-btn" onClick={() => setGoal(String(Math.ceil((kids * d) / 100) * 100))}>${d} per child · {money(Math.ceil((kids * d) / 100) * 10000)}</button>
+              ))}
+            </div>
+          )}
+        </>)}
+        {goalType === "per_child" && (<>
+          <div className="money"><input className="input" inputMode="decimal" placeholder="25" value={goalPc} onChange={(e) => setGoalPc(e.target.value)} aria-label="Goal per child in dollars" /></div>
+          <div className="chips">{[25, 50, 100, 250].map((d) => <button type="button" key={d} className="chip-btn" onClick={() => setGoalPc(String(d))}>${d} per child</button>)}</div>
+          <p className="hint">The total follows the number of kids: {kids ? <b>{money(goalCents)}</b> : "add places to see it"}{kids ? ` for ${fmt(kids)} kids` : ""}. If you add ZIP codes later, the total grows with them.</p>
+        </>)}
+        {goalType === "open" && <p className="hint">No target: every pledge counts, and your page shows the total and the amount per child so far.</p>}
         <div className="pcbox">
-          <div><span className="num">{kids ? perChild(pc) : "—"}</span><small>goal per child</small></div>
+          <div><span className="num">{goalType === "open" ? "Open" : kids ? perChild(pc) : "—"}</span><small>{goalType === "per_child" ? `total ${kids ? money(goalCents) : "—"}` : "goal per child"}</small></div>
           <div><span className="num">{fmt(kids)}</span><small>estimated kids who&apos;d receive it</small></div>
           <div><span className="num">{kids ? money(minTotal) : "—"}</span><small>Treasury guidance (${(rules.min_per_child_cents / 100).toFixed(0)}/child)</small></div>
         </div>
@@ -164,11 +180,12 @@ export function Builder({ rules, initial, partner, initialAge }: {
 
       <section className="panel bstep">
         <div className="subhead"><h3><span className="n">4</span>How do you want to run it?</h3></div>
-        <div className="modes">
-          {MODES.map((m) => (
-            <button type="button" key={m.id} className="mode" aria-pressed={mode === m.id} onClick={() => setMode(m.id)}><b>{m.t}</b><small>{m.d}</small></button>
-          ))}
+        <p className="hint">Pick one, both, or neither.</p>
+        <div className="modes two">
+          <button type="button" className="mode" aria-pressed={matching} onClick={() => setMatching(!matching)}><b>{matching ? "✓ " : ""}Match me with others</b><small>Show up in matching, and pool with campaigns funding the same kids or at a similar amount per child.</small></button>
+          <button type="button" className="mode" aria-pressed={friends} onClick={() => setFriends(!friends)}><b>{friends ? "✓ " : ""}Invite friends</b><small>Get a link that brings friends in as co-organizers.</small></button>
         </div>
+        <p className="small muted">{!matching && !friends ? "Running it on your own: your campaign stays independent, and anyone can still give to it." : matching && friends ? "Matching and friend invites are both on." : matching ? "Matching is on." : "Friend invites are on; matching is off."} You can change this later.</p>
         {codes.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <div className="split" style={{ marginBottom: 10 }}><b>{matches.length ? "Already raising for kids like yours" : "No similar campaigns yet"}</b><span className="small muted">Ranked by $ per child, shared ZIPs, and distance</span></div>
