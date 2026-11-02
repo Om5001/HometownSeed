@@ -38,7 +38,6 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hs
-      SESSION_SECRET: ci-only-secret-0123456789abcdef
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v5

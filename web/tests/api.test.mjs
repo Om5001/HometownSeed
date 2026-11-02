@@ -23,8 +23,13 @@ function client() {
 
 test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async () => {
   const ana = client(), ben = client(), cy = client();
-  assert.equal((await ana("/api/auth/login", { email: `ana-${stamp}@example.com`, name: "Ana" })).status, 200);
-  assert.equal((await ben("/api/auth/login", { email: `ben-${stamp}@example.com`, name: "Ben" })).status, 200);
+  const pw = "correct horse battery";
+  assert.equal((await ana("/api/auth/signup", { email: `ana-${stamp}@example.com`, name: "Ana", password: pw })).status, 201);
+  assert.equal((await ben("/api/auth/signup", { email: `ben-${stamp}@example.com`, name: "Ben", password: pw })).status, 201);
+  assert.equal((await client()("/api/auth/signup", { email: `ana-${stamp}@example.com`, name: "Ana", password: pw })).status, 409);
+  assert.equal((await client()("/api/auth/signup", { email: `x-${stamp}@example.com`, name: "X", password: "short" })).status, 400);
+  assert.equal((await client()("/api/auth/login", { email: `ana-${stamp}@example.com`, password: "wrong password" })).status, 401);
+  assert.equal((await client()("/api/auth/login", { email: `ana-${stamp}@example.com`, password: pw })).status, 200);
 
   const unauth = await client()("/api/campaigns", { name: "Nope", zips: ["11234"], goalCents: 100000 });
   assert.equal(unauth.status, 401);
@@ -37,10 +42,11 @@ test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async 
   const bad = await ana("/api/campaigns", { name: "Bad", zips: ["00000"], goalCents: 100000 });
   assert.equal(bad.status, 400);
 
-  const pl = await client()(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 2500, name: "Guest", email: "g@example.com" });
+  assert.equal((await client()(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 2500, name: "Guest" })).status, 401);
+  const pl = await ben(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 2500 });
   assert.equal(pl.status, 201);
   assert.equal(pl.data.payment.kind, "pledge_only");
-  assert.equal((await client()(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 100, name: "Tiny" })).status, 400);
+  assert.equal((await ben(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 100 })).status, 400);
 
   const m = await ana(`/api/campaigns/${a.data.slug}/matches`);
   const hit = m.data.find((x) => x.slug === b.data.slug);
@@ -61,11 +67,51 @@ test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async 
   const inv = await ana(`/api/campaigns/${a.data.slug}/invites`, { emails: ["friend@example.com"] });
   assert.equal(inv.status, 200);
   const code = inv.data.link.split("/join/")[1];
-  await cy("/api/auth/login", { email: `cy-${stamp}@example.com`, name: "Cy" });
+  await cy("/api/auth/signup", { email: `cy-${stamp}@example.com`, name: "Cy", password: pw });
   assert.equal((await cy(`/api/join/${code}`, {})).data.slug, a.data.slug);
 
   const cov = await client()("/api/map/coverage");
   assert.ok(cov.data.some((c) => c.z === "11234" && c.s === 2));
   const pts = await client()("/api/map/points");
   assert.match(pts.data, /11234,40\.608,-73\.911,\d+/);
+});
+
+test("profiles, swipe deck, mutual match, start together", { skip }, async () => {
+  const pw = "correct horse battery";
+  const dee = client(), eli = client(), anon = client();
+  await dee("/api/auth/signup", { email: `dee-${stamp}@example.com`, name: "Dee", password: pw });
+  await eli("/api/auth/signup", { email: `eli-${stamp}@example.com`, name: "Eli", password: pw });
+
+  assert.equal((await anon("/api/deck")).status, 401);
+  assert.equal((await dee("/api/profile", { home_zip: "11234", target_zips: ["11234"], gift_types: [] })).status, 400);
+  assert.equal((await dee("/api/profile", { home_zip: "11234", target_zips: ["11234", "11236"], gift_types: ["cash", "stock"], per_child_cents: 2500, budget_cents: 500000 })).status, 200);
+  assert.equal((await eli("/api/profile", { home_zip: "11210", target_zips: ["11236"], gift_types: ["stock"], per_child_cents: 3000 })).status, 200);
+  const prof = await dee("/api/profile");
+  assert.deepEqual(prof.data.profile.target_zips, ["11234", "11236"]);
+
+  const deck = await dee("/api/deck");
+  assert.equal(deck.status, 200);
+  const eliCard = deck.data.find((c) => c.kind === "person" && c.title === "Eli");
+  assert.ok(eliCard, "Eli should be in Dee's deck");
+  const camp = deck.data.find((c) => c.kind === "campaign");
+  assert.ok(camp && camp.score >= deck.data.at(-1).score, "deck is sorted by score");
+  for (let i = 1; i < deck.data.length; i++) assert.ok(deck.data[i - 1].score >= deck.data[i].score);
+
+  assert.equal((await dee("/api/swipes", { kind: "person", id: eliCard.id, decision: "like" })).data.matched, false);
+  const eliDeck = await eli("/api/deck");
+  const deeCard = eliDeck.data.find((c) => c.kind === "person" && c.title === "Dee");
+  assert.equal((await eli("/api/swipes", { kind: "person", id: deeCard.id, decision: "like" })).data.matched, true);
+  assert.ok(!(await dee("/api/deck")).data.some((c) => c.id === eliCard.id), "swiped cards leave the deck");
+
+  await dee("/api/swipes", { kind: "campaign", id: camp.id, decision: "like" });
+  const page = await dee("/connections");
+  assert.match(page.data, /Eli/);
+  assert.match(page.data, new RegExp(camp.title));
+
+  const gated = await fetch(BASE + "/start", { redirect: "manual" });
+  assert.equal(gated.status, 307);
+  assert.match(gated.headers.get("location"), /\/signin\?next=/);
+
+  const cross = await fetch(BASE + "/api/profile", { method: "POST", headers: { origin: "https://evil.example", "content-type": "application/json" }, body: "{}" });
+  assert.equal(cross.status, 403);
 });

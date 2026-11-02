@@ -11,9 +11,20 @@ async function post(url: string, body: unknown) {
 }
 
 export function PledgeForm({ slug, kids, where, user }: { slug: string; kids: number; where: string; user: { display_name: string; email: string } | null }) {
+  if (!user) return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="subhead"><h3><span className="n">$</span>Pledge to this campaign</h3></div>
+      <p className="hint">Sign in to pledge, so we can send your receipt and tell you when the money reaches kids&apos; accounts.</p>
+      <a className="btn btn-green submit" href={`/signin?next=/c/${slug}%23give`}>Sign in to pledge</a>
+    </div>
+  );
+  return <PledgeFormInner slug={slug} kids={kids} where={where} user={user} />;
+}
+
+function PledgeFormInner({ slug, kids, where, user }: { slug: string; kids: number; where: string; user: { display_name: string; email: string } }) {
   const router = useRouter();
   const [amt, setAmt] = useState(100); const [custom, setCustom] = useState("");
-  const [name, setName] = useState(user?.display_name ?? ""); const [email, setEmail] = useState(user?.email ?? "");
+  const [name, setName] = useState(user.display_name); const [email, setEmail] = useState(user.email);
   const [anon, setAnon] = useState(false); const [msg, setMsg] = useState(""); const [fees, setFees] = useState(true);
   const [err, setErr] = useState(""); const [done, setDone] = useState<number | null>(null); const [busy, setBusy] = useState(false);
   const dollars = custom ? Number(custom.replace(/[^0-9.]/g, "")) || 0 : amt;

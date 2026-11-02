@@ -92,3 +92,31 @@ def test_pool_stats_union(conn):
 def test_search_places(conn):
     assert [r["zcta"] for r in rows(conn, "select * from search_places('112')")] == ["11234", "11236"]
     assert rows(conn, "select * from search_places('Adjuntas, PR')")[0]["zcta"] == "00601"
+
+
+def test_match_deck_ranks_location_then_amount(conn):
+    near = mk(conn, "near-same", U2, ["11236"], int(2550 * 2500))      # ~$25/child, next door
+    mk(conn, "far-away", U2, ["00601"], 100_000)
+    conn.execute("""insert into giving_profiles (user_id, home_zip, target_zips, per_child_cents, gift_types, anchor_lat, anchor_lon)
+                    values (%s, '11234', '{11234}', 2500, '{cash}', 40.61, -73.92)""", (U1,))
+    conn.execute("""insert into giving_profiles (user_id, home_zip, target_zips, per_child_cents, gift_types, anchor_lat, anchor_lon)
+                    values (%s, '11236', '{11236}', 2500, '{cash,stock}', 40.64, -73.90)""", (U2,))
+    conn.commit()
+    deck = rows(conn, "select * from match_deck(%s)", (U1,))
+    kinds = [(d["kind"], d["title"]) for d in deck]
+    assert ("person", "B") in kinds
+    assert [d["slug"] for d in deck if d["kind"] == "campaign"][0] == "near-same"
+    assert all(deck[i]["score"] >= deck[i + 1]["score"] for i in range(len(deck) - 1))
+    # swiping removes a card; a mutual like shows up as a connection
+    conn.execute("insert into swipes values (%s,'campaign',%s,'pass')", (U1, near))
+    conn.execute("insert into swipes values (%s,'person',%s,'like'), (%s,'person',%s,'like')", (U1, U2, U2, U1))
+    conn.commit()
+    assert "near-same" not in [d["slug"] for d in rows(conn, "select * from match_deck(%s)", (U1,))]
+    assert rows(conn, "select other_id::text from v_connections where user_id = %s", (U1,))[0]["other_id"] == U2
+
+
+def test_child_estimate_survives_restricted_search_path(conn):
+    # Postgres 17 (Supabase) builds materialized views with search_path = pg_catalog
+    conn.execute("set search_path = pg_catalog, pg_temp")
+    conn.execute("refresh materialized view public.zcta_stats")
+    conn.execute("reset search_path")

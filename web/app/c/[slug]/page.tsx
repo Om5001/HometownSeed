@@ -72,9 +72,11 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <div className="panel-head"><div><p className="eyebrow">Treasury readiness{pool ? " (pooled)" : ""}</p><h2 style={{ marginTop: 4 }}>Ready to send?</h2></div></div>
             <ul className="ready">
               <li><span className={"ic " + (unit.meets ? "ok" : "no")}>{unit.meets ? "✓" : "!"}</span>
-                <div><b>{fmt(rules.min_beneficiaries)} or more kids in the area</b><small>{unit.meets ? `${fmt(unit.kids_u18)} estimated account holders under 18.` : `${fmt(unit.kids_u18)} now; ${fmt(rules.min_beneficiaries - unit.kids_u18)} more needed. Add ZIPs or pool with a nearby campaign.`}</small></div></li>
-              <li><span className={"ic " + (perKidOk ? "ok" : "no")}>{perKidOk ? "✓" : "!"}</span>
-                <div><b>At least ${(rules.min_per_child_cents / 100).toFixed(0)} per child</b><small>{perKidOk ? `${perChild(unit.raised / unit.kids)} per child pledged.` : `${money(unit.raised)} of ${money(minTotal)} needed (${perChild(unit.kids ? unit.raised / unit.kids : 0)} per child so far). Pooling adds money and kids together.`}</small></div></li>
+                <div><b>{fmt(rules.min_beneficiaries)} or more kids in the area <span className="tag">Required by law</span></b><small>{unit.meets ? `${fmt(unit.kids_u18)} estimated account holders under 18.` : `${fmt(unit.kids_u18)} now; ${fmt(rules.min_beneficiaries - unit.kids_u18)} more needed. Add ZIPs or pool with a nearby campaign.`}</small></div></li>
+              {rules.min_per_child_cents > 0 && (
+              <li><span className={"ic " + (perKidOk ? "ok" : "no")}>{perKidOk ? "✓" : "i"}</span>
+                <div><b>${(rules.min_per_child_cents / 100).toFixed(0)} per child <span className="tag o">Treasury guidance</span></b><small>{perKidOk ? `${perChild(unit.raised / unit.kids)} per child pledged.` : `${money(unit.raised)} of ${money(minTotal)} (${perChild(unit.kids ? unit.raised / unit.kids : 0)} per child so far). IRS Notice 2025-68 says applications in 2026–2027 need at least this; the final amount is set in Treasury's agreement.`}</small></div></li>
+              )}
               <li><span className="ic no">…</span><div><b>Sent by a partner charity</b><small>Only charities, foundations, donor-advised funds and governments can make these contributions. Submission opens once a charity partner is connected.</small></div></li>
             </ul>
           </section>

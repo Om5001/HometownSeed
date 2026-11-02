@@ -19,7 +19,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
             <h1 style={{ marginTop: 12 }}>Seed every kid in <em>your ZIP code.</em></h1>
           </div>
           <div>
-            <p className="lede">Pick the ZIP codes you care about and how much you hope to raise. We match you with people raising for the same kids or at the same amount per child, so together you reach the {fmt(rules.min_beneficiaries)}-kid minimum and Treasury&apos;s ${(rules.min_per_child_cents / 100).toFixed(0)}-per-child floor. Run it with friends, on your own, or pooled with others.</p>
+            <p className="lede">Pick the ZIP codes you care about and how much you hope to raise. We match you with people raising for the same kids or at the same amount per child, so together you reach the {fmt(rules.min_beneficiaries)} kids an area needs to qualify. Run it with friends, on your own, or pooled with others.</p>
             <div style={{ marginTop: 18 }}><ZipSearch /></div>
           </div>
         </div>
@@ -61,7 +61,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
         <div className="section-head"><h2>How it works</h2></div>
         <div className="steps">
           <div className="step"><span className="n">Step 1</span><h3>Pick places and a goal</h3><p>Choose ZIP codes and how much you hope to raise. We show the estimated kids under 18 there (Census data) and what your goal means per child.</p></div>
-          <div className="step"><span className="n">Step 2</span><h3>Match up or invite friends</h3><p>Pile on with campaigns already funding the same kids, or pool with ones at a similar amount per child until the area reaches {fmt(rules.min_beneficiaries)} kids and ${(rules.min_per_child_cents / 100).toFixed(0)} per child.</p></div>
+          <div className="step"><span className="n">Step 2</span><h3>Match up or invite friends</h3><p>Pile on with campaigns already funding the same kids, or pool with ones at a similar amount per child until the area reaches {fmt(rules.min_beneficiaries)} kids, the threshold the law sets.</p></div>
           <div className="step"><span className="n">Step 3</span><h3>A charity sends it to Treasury</h3><p>When an area is ready, a partner charity submits one general funding contribution. Treasury splits it evenly into every eligible child&apos;s account.</p></div>
         </div>
       </section>

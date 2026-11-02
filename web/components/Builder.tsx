@@ -1,12 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ZipSearch } from "./ZipSearch";
 import { AreaMap } from "./AreaMap";
 import { MatchCard } from "./MatchCard";
 import type { Match, Rules, ZipRow } from "@/lib/queries";
-import type { User } from "@/lib/auth";
 import { fmt, money, perChild, placeLabel } from "@/lib/format";
 
 type Z = ZipRow & { suggested?: boolean };
@@ -21,16 +19,17 @@ const MODES = [
   { id: "solo", t: "Run it on my own", d: "Your campaign stays independent. Others can still give to it." },
 ] as const;
 
-export function Builder({ user, rules, initial }: { user: User | null; rules: Rules; initial: ZipRow[] }) {
+export function Builder({ rules, initial, partner, initialAge }: {
+  rules: Rules; initial: ZipRow[]; partner?: { id: string; name: string; email: string } | null; initialAge?: { min: number; max: number };
+}) {
   const router = useRouter();
   const [zips, setZips] = useState<Z[]>(initial);
-  const [age, setAge] = useState({ min: 0, max: 17 });
+  const [age, setAge] = useState(initialAge ?? { min: 0, max: 17 });
   const [goal, setGoal] = useState("");
   const [mode, setMode] = useState<"match" | "friends" | "solo">("match");
   const [name, setName] = useState(""); const [desc, setDesc] = useState("");
   const [area, setArea] = useState<Area>(null); const [nearby, setNearby] = useState<(ZipRow & { miles?: number })[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [email, setEmail] = useState(""); const [you, setYou] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const goalCents = Math.round((Number(goal.replace(/[^0-9.]/g, "")) || 0) * 100);
   const codes = useMemo(() => zips.map((z) => z.zcta), [zips]);
@@ -72,16 +71,15 @@ export function Builder({ user, rules, initial }: { user: User | null; rules: Ru
     if (name.trim().length < 3) return setErr("Give your campaign a name.");
     setBusy(true);
     try {
-      if (!user) {
-        const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, name: you }) });
-        if (!r.ok) { setErr((await r.json()).error); return; }
-      }
       const r = await fetch("/api/campaigns", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, description: desc, zips: codes, suggestedZips: zips.filter((z) => z.suggested).map((z) => z.zcta), goalCents, minAge: age.min, maxAge: age.max, mode }),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error); return; }
+      if (partner) {
+        await fetch(`/api/campaigns/${d.slug}/invites`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emails: [partner.email] }) });
+      }
       router.push(`/c/${d.slug}?new=1`);
     } finally { setBusy(false); }
   };
@@ -105,7 +103,7 @@ export function Builder({ user, rules, initial }: { user: User | null; rules: Ru
             <div className={"meter" + (area?.meets_min ? " ok" : "")}>
               <div className="bar"><span style={{ width: Math.min(100, (kidsAll / rules.min_beneficiaries) * 100) + "%" }} /></div>
               <div className="meter-row">
-                <span>{area?.meets_min ? <b>Meets the {fmt(rules.min_beneficiaries)}-kid minimum</b> : <><b>{fmt(Math.max(0, rules.min_beneficiaries - kidsAll))}</b> more kids needed to qualify on its own</>}</span>
+                <span>{area?.meets_min ? <b>Meets the {fmt(rules.min_beneficiaries)}-kid requirement</b> : <><b>{fmt(Math.max(0, rules.min_beneficiaries - kidsAll))}</b> more kids needed to qualify on its own</>}</span>
                 <span>{fmt(kidsAll)} / {fmt(rules.min_beneficiaries)}</span>
               </div>
             </div>
@@ -157,10 +155,10 @@ export function Builder({ user, rules, initial }: { user: User | null; rules: Ru
         <div className="pcbox">
           <div><span className="num">{kids ? perChild(pc) : "—"}</span><small>goal per child</small></div>
           <div><span className="num">{fmt(kids)}</span><small>estimated kids who&apos;d receive it</small></div>
-          <div><span className="num">{kids ? money(minTotal) : "—"}</span><small>Treasury minimum (${(rules.min_per_child_cents / 100).toFixed(0)}/child)</small></div>
+          <div><span className="num">{kids ? money(minTotal) : "—"}</span><small>Treasury guidance (${(rules.min_per_child_cents / 100).toFixed(0)}/child)</small></div>
         </div>
         {kids > 0 && goalCents > 0 && goalCents < minTotal && (
-          <p className="notice"><b>Below the ${(rules.min_per_child_cents / 100).toFixed(0)}-per-child minimum.</b> That&apos;s fine to start: pool with campaigns below to combine money, or raise your goal to {money(minTotal)}.</p>
+          <p className="notice"><b>Below Treasury&apos;s ${(rules.min_per_child_cents / 100).toFixed(0)}-per-child guidance.</b> Only the 5,000-kid area is required by law, but IRS guidance for 2026–2027 applications asks for at least ${(rules.min_per_child_cents / 100).toFixed(0)} per child. Pool with campaigns below or raise your goal to {money(minTotal)}.</p>
         )}
       </section>
 
@@ -186,15 +184,8 @@ export function Builder({ user, rules, initial }: { user: User | null; rules: Ru
         <div className="subhead"><h3><span className="n">5</span>Name it</h3></div>
         <input className="input" maxLength={80} placeholder="Give it a name, like Marine Park Kids Fund" value={name} onChange={(e) => setName(e.target.value)} aria-label="Campaign name" />
         <label className="field"><span>Description <em>optional</em></span><textarea className="input" maxLength={500} placeholder="Why these places matter to you" value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
-        {!user && (
-          <div className="row">
-            <label className="field"><span>Your name</span><input className="input" value={you} onChange={(e) => setYou(e.target.value)} autoComplete="name" /></label>
-            <label className="field"><span>Email</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
-          </div>
-        )}
         {err && <p className="err" role="alert">{err}</p>}
         <button className="btn btn-green submit" type="button" disabled={busy} onClick={publish}>{busy ? "Publishing…" : "Publish campaign"}</button>
-        {!user && <p className="small muted">Already have an account? <Link href="/signin?next=/start">Sign in</Link></p>}
       </section>
     </div>
   );

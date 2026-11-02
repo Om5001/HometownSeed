@@ -191,3 +191,80 @@ export async function memberRole(campaignId: string, userId: string | undefined 
   const [m] = await db()<{ role: string }[]>`select role from campaign_members where campaign_id = ${campaignId} and user_id = ${userId}`;
   return m?.role ?? null;
 }
+
+export type GivingProfile = {
+  user_id: string; home_zip: string | null; radius_miles: number; target_zips: string[]; gift_types: string[];
+  budget_cents: number | null; per_child_cents: number | null; min_age: number; max_age: number;
+  income_focus: "any" | "below_threshold" | "lowest"; open_to_match: boolean; bio: string | null;
+};
+
+export async function getProfile(userId: string): Promise<GivingProfile | null> {
+  const [p] = await db()<GivingProfile[]>`
+    select user_id, home_zip::text as home_zip, radius_miles, coalesce(target_zips::text[], '{}') as target_zips, gift_types,
+           budget_cents::float8 as budget_cents, per_child_cents::float8 as per_child_cents, min_age, max_age,
+           income_focus, open_to_match, bio
+    from giving_profiles where user_id = ${userId}`;
+  return p ?? null;
+}
+
+export async function saveProfile(userId: string, p: Omit<GivingProfile, "user_id">) {
+  const anchorZips = p.target_zips.length ? p.target_zips : p.home_zip ? [p.home_zip] : [];
+  const a = anchorZips.length ? await areaStats(anchorZips) : null;
+  await db()`
+    insert into giving_profiles (user_id, home_zip, radius_miles, target_zips, gift_types, budget_cents, per_child_cents,
+                                 min_age, max_age, income_focus, open_to_match, bio, anchor_lat, anchor_lon, updated_at)
+    values (${userId}, ${p.home_zip}, ${p.radius_miles}, ${p.target_zips}::char(5)[], ${p.gift_types}, ${p.budget_cents},
+            ${p.per_child_cents}, ${p.min_age}, ${p.max_age}, ${p.income_focus}, ${p.open_to_match}, ${p.bio},
+            ${a?.lat ?? null}, ${a?.lon ?? null}, now())
+    on conflict (user_id) do update set
+      home_zip = excluded.home_zip, radius_miles = excluded.radius_miles, target_zips = excluded.target_zips,
+      gift_types = excluded.gift_types, budget_cents = excluded.budget_cents, per_child_cents = excluded.per_child_cents,
+      min_age = excluded.min_age, max_age = excluded.max_age, income_focus = excluded.income_focus,
+      open_to_match = excluded.open_to_match, bio = excluded.bio, anchor_lat = excluded.anchor_lat,
+      anchor_lon = excluded.anchor_lon, updated_at = now()`;
+}
+
+export type DeckCard = {
+  kind: "campaign" | "person"; id: string; slug: string | null; title: string; subtitle: string; miles: number | null;
+  per_child_cents: number | null; kids: number | null; raised_cents: number | null; goal_cents: number | null;
+  gift_types: string[]; min_age: number; max_age: number; shared_zips: number; score: number; reasons: string[];
+};
+
+export async function getDeck(userId: string, limit = 30) {
+  return db()<DeckCard[]>`
+    select kind, id, slug, title, subtitle, miles::float8 as miles, per_child_cents::float8 as per_child_cents,
+           kids::float8 as kids, raised_cents::float8 as raised_cents, goal_cents::float8 as goal_cents,
+           gift_types, min_age, max_age, shared_zips, score::float8 as score, reasons
+    from match_deck(${userId}, ${limit})`;
+}
+
+export async function getConnections(userId: string) {
+  const sql = db();
+  const [people, liked, invites] = await Promise.all([
+    sql<{ id: string; display_name: string; email: string; matched_at: string; home: string | null; per_child_cents: number | null;
+          gift_types: string[] | null; target_zips: string[] | null; bio: string | null }[]>`
+      select u.id, u.display_name, u.email, c.matched_at,
+             (select z.place_name || ', ' || z.place_state from zcta_stats z where z.zcta = g.home_zip) as home,
+             g.per_child_cents::float8 as per_child_cents, g.gift_types, g.target_zips::text[] as target_zips, g.bio
+      from v_connections c join app_users u on u.id = c.other_id
+      left join giving_profiles g on g.user_id = u.id
+      where c.user_id = ${userId} order by c.matched_at desc`,
+    listCampaignsByIds(sql, userId),
+    sql<{ id: string; slug: string; name: string; invite_code: string; from_name: string }[]>`
+      select i.id, c.slug, c.name, c.invite_code, u.display_name as from_name
+      from invites i join campaigns c on c.id = i.campaign_id join app_users u on u.id = i.created_by
+      join app_users me on lower(me.email) = lower(i.email) and me.id = ${userId}
+      where i.accepted_by is null and c.status = 'active'
+        and not exists (select 1 from campaign_members m where m.campaign_id = c.id and m.user_id = ${userId})
+      order by i.created_at desc`,
+  ]);
+  return { people, liked, invites };
+}
+
+async function listCampaignsByIds(sql: ReturnType<typeof db>, userId: string) {
+  return sql<CampaignRow[]>`
+    ${campaignSelect(sql)}
+    where s.id in (select target_id from swipes where user_id = ${userId} and target_kind = 'campaign' and decision = 'like')
+      and s.status = 'active'
+    order by s.created_at desc`;
+}

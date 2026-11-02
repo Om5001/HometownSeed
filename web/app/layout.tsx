@@ -34,17 +34,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="wrap">
             <Link className="brand" href="/" style={{ textDecoration: "none", color: "inherit" }}><Logo />Hometown Seed</Link>
             <nav className="nav">
-              <Link className="navlink" href="/#campaigns">Campaigns</Link>
-              <Link className="navlink" href="/#how">How it works</Link>
               {user ? (
                 <>
-                  <Link className="navlink keep" href="/me">{user.display_name}</Link>
+                  <Link className="navlink keep" href="/match">Match</Link>
+                  <Link className="navlink" href="/connections">Matches</Link>
+                  <Link className="navlink" href="/me">My campaigns</Link>
+                  <Link className="navlink" href="/profile">Profile</Link>
                   <SignOutButton />
+                  <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               ) : (
-                <Link className="navlink keep" href="/signin">Sign in</Link>
+                <>
+                  <Link className="navlink" href="/#campaigns">Campaigns</Link>
+                  <Link className="navlink" href="/#how">How it works</Link>
+                  <Link className="navlink keep" href="/signin">Sign in</Link>
+                  <Link className="btn btn-green btn-sm" href="/signin?mode=signup&next=/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
+                </>
               )}
-              <Link className="btn btn-green btn-sm" href="/start">Start a campaign</Link>
             </nav>
           </div>
         </header>

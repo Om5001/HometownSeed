@@ -18,7 +18,7 @@ The database tables and functions come from `../sql/` and are applied by the pip
 ## Deploy (Vercel)
 
 1. Import the GitHub repo in Vercel and set **Root Directory** to `web`.
-2. Add environment variables: `DATABASE_URL`, `SESSION_SECRET` (random, 32+ chars), `NEXT_PUBLIC_SITE_URL`.
+2. Add environment variables: `DATABASE_URL` and `NEXT_PUBLIC_SITE_URL`.
 3. Deploy.
 
 ## What's where
@@ -31,7 +31,11 @@ The database tables and functions come from `../sql/` and are applied by the pip
 | `app/zip/[zip]/` | ZIP profile and campaigns covering it |
 | `app/api/` | JSON API used by the pages (and future mobile apps) |
 | `lib/queries.ts` | All database reads |
-| `lib/auth.ts` | **Prototype** sign-in (email only). Replace with Supabase Auth before launch |
+| `lib/auth.ts` | Email + password sign-in (scrypt hashes, server sessions, rate limiting). Add email verification and password reset before public launch |
+| `app/profile/`, `components/ProfileForm.tsx` | Giving profile: places, radius, cash/stock/DAF, budget, $ per child, age group, area income focus |
+| `app/match/`, `components/SwipeDeck.tsx` | Swipe deck of campaigns and givers, ranked by location, then $ per child (`match_deck` in `sql/005`) |
+| `app/connections/` | Mutual matches, saved campaigns, invites; start a campaign together |
+| `middleware.ts` | Sends signed-out visitors from gated pages to sign-in |
 | `lib/payments.ts` | **Prototype** payments seam (pledges only). Connect the charity's processor here |
 
 ## Tests
