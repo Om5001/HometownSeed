@@ -112,7 +112,7 @@ async function newToken(userId: string, purpose: "verify_email" | "reset_passwor
   return token;
 }
 
-async function useToken(token: string, purpose: string): Promise<string | null> {
+async function consumeToken(token: string, purpose: string): Promise<string | null> {
   if (!token || token.length > 100) return null;
   const [t] = await db()<{ user_id: string }[]>`
     update auth_tokens set used_at = now()
@@ -206,11 +206,20 @@ export async function sendVerification(user: User, baseUrl: string): Promise<Sen
   return sendEmail({ to: user.email, ...verifyEmailMessage(user.display_name, `${baseUrl}/verify?token=${token}`) });
 }
 
-export async function verifyEmailToken(token: string): Promise<boolean> {
-  const userId = await useToken(token, "verify_email");
-  if (!userId) return false;
-  await db()`update app_users set email_verified_at = coalesce(email_verified_at, now()) where id = ${userId}`;
-  return true;
+/** Confirms an email. Safe to call twice: a link that was already used for an
+ *  already-confirmed address still counts as success (email scanners and double clicks). */
+export async function verifyEmailToken(token: string): Promise<"ok" | "invalid"> {
+  if (!token || token.length > 100) return "invalid";
+  const sql = db();
+  const userId = await consumeToken(token, "verify_email");
+  if (userId) {
+    await sql`update app_users set email_verified_at = coalesce(email_verified_at, now()) where id = ${userId}`;
+    return "ok";
+  }
+  const [t] = await sql<{ verified: boolean }[]>`
+    select u.email_verified_at is not null as verified from auth_tokens t join app_users u on u.id = t.user_id
+    where t.token_hash = ${sha(token)} and t.purpose = 'verify_email'`;
+  return t?.verified ? "ok" : "invalid";
 }
 
 // --- Password reset / change -------------------------------------------------------
@@ -234,7 +243,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
     where t.token_hash = ${sha(token)} and t.purpose = 'reset_password' and t.used_at is null and t.expires_at > now()`;
   if (!peek) throw new AuthError(400, "This reset link has expired or was already used. Ask for a new one.");
   const bad = passwordProblem(password, peek.email); if (bad) throw new AuthError(400, bad);
-  const userId = await useToken(token, "reset_password");
+  const userId = await consumeToken(token, "reset_password");
   if (!userId) throw new AuthError(400, "This reset link has expired or was already used. Ask for a new one.");
   // Clicking the emailed link also proves the address.
   await sql`update app_users set password_hash = ${await hashPassword(password)}, password_changed_at = now(),

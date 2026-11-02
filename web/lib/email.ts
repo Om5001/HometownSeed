@@ -11,7 +11,9 @@ export async function sendEmail(o: { to: string; subject: string; text: string; 
   if (!key) {
     if (process.env.NODE_ENV === "production" && process.env.EMAIL_DEV_LINKS !== "1") throw new Error("Email is not configured (set RESEND_API_KEY and EMAIL_FROM).");
     console.log(`\n[email:dev] To: ${o.to}\n[email:dev] Subject: ${o.subject}\n[email:dev] Link: ${o.link}\n`);
-    return { sent: false, devLink: o.link };
+    // Relative, so the on-screen link always opens on the site you're using (Codespaces, localhost, ...)
+    const u = new URL(o.link);
+    return { sent: false, devLink: u.pathname + u.search };
   }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",

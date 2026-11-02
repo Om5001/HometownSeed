@@ -22,14 +22,17 @@ function client() {
 }
 
 const PW = "correct horse battery";
-const path = (link) => { const u = new URL(link); return u.pathname + u.search; };
+const path = (link) => { const u = new URL(link, "http://x"); return u.pathname + u.search; };
+const tokenOf = (link) => new URL(link, "http://x").searchParams.get("token");
 async function signup(c, name, verify = true) {
   const r = await c("/api/auth/signup", { email: `${name.toLowerCase()}-${stamp}@example.com`, name, password: PW });
   assert.equal(r.status, 201, JSON.stringify(r.data));
   assert.equal(r.data.user.email_verified, false);
   if (verify) {
-    const page = await c(path(r.data.verification.devLink));
-    assert.match(page.data, /Email confirmed/);
+    assert.ok(r.data.verification.devLink.startsWith("/verify?token="), "dev link is relative");
+    const v = await c("/api/auth/verify", { token: tokenOf(r.data.verification.devLink) });
+    assert.equal(v.status, 200);
+    assert.equal((await c("/api/auth/verify", { token: tokenOf(r.data.verification.devLink) })).status, 200, "second click still OK");
   }
   return r.data;
 }
@@ -40,7 +43,8 @@ test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async 
   await signup(ana, "Ana", false);
   assert.equal((await ana("/api/campaigns", { name: "Too soon", zips: ["11234"], goalCents: 100000 })).status, 403, "unverified can't create");
   const resend = await ana("/api/auth/resend", {});
-  assert.equal((await ana(path(resend.data.verification.devLink))).status, 200);
+  assert.equal((await ana("/api/auth/verify", { token: tokenOf(resend.data.verification.devLink) })).status, 200);
+  assert.equal((await ana("/api/auth/verify", { token: "not-a-token" })).status, 400);
   await signup(ben, "Ben");
   assert.equal((await client()("/api/auth/signup", { email: `ana-${stamp}@example.com`, name: "Ana", password: pw })).status, 409);
   assert.equal((await client()("/api/auth/signup", { email: `x-${stamp}@example.com`, name: "X", password: "short" })).status, 400);
@@ -154,7 +158,7 @@ test("account security: lockout delay, reset, change password, delete", { skip }
   assert.ok(forgot.data.devLink);
   const unknown = await client()("/api/auth/forgot", { email: `nobody-${stamp}@example.com` });
   assert.equal(unknown.status, 200);
-  const token = new URL(forgot.data.devLink).searchParams.get("token");
+  const token = tokenOf(forgot.data.devLink);
   const other = client();
   assert.equal((await other("/api/auth/reset", { token, password: "short" })).status, 400);
   assert.equal((await other("/api/auth/reset", { token, password: "new horse battery staple" })).status, 200);
