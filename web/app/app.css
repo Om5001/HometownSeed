@@ -123,3 +123,11 @@ a.btn{text-decoration:none}
 .doc .hash{font-family:var(--f-mono);font-size:11.5px;word-break:break-all;color:var(--muted)}
 @media print{.top,footer,.verify-banner,.noprint{display:none!important}.doc{border:0;padding:0}body{background:#fff}}
 .tracker b,.tracker small{display:block}
+
+/* Combined profile + account page */
+.subnav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.subnav a { padding: 6px 12px; border: 1px solid var(--line, #d5dbe3); border-radius: 999px; font-weight: 600; font-size: 14px; text-decoration: none; color: inherit; }
+.subnav a:hover { border-color: currentColor; }
+.acct-sec { scroll-margin-top: 80px; padding-top: 18px; }
+.acct-sec h2 { font-size: clamp(22px, 3vw, 30px); font-weight: 900; margin: 10px 0 4px; }
+.acct-sec + .acct-sec { border-top: 1px solid var(--line, #d5dbe3); margin-top: 28px; }

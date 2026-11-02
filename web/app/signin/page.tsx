@@ -10,7 +10,7 @@ function Form() {
   const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [pw, setPw] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<{ devLink?: string } | null>(null);
-  const dest = next.startsWith("/") && !next.startsWith("//") ? next : mode === "up" ? "/profile?welcome=1" : "/match";
+  const dest = next.startsWith("/") && !next.startsWith("//") ? next : mode === "up" ? "/account?welcome=1" : "/match";
   if (sent) return (
     <div className="stack">
       <div className="thanks"><div className="ring">✉</div><h3>Check your email</h3>

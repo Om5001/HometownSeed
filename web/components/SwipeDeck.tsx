@@ -113,7 +113,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
           <div className="dcard empty-deck">
             <h3>You&apos;re all caught up</h3>
             <p className="muted">New campaigns and givers near your places will show up here. Widen your radius or add places to see more.</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Link className="btn btn-green btn-sm" href="/profile">Edit profile</Link><Link className="btn btn-ghost btn-sm" href="/start">Start a campaign</Link></div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Link className="btn btn-green btn-sm" href="/account#giving">Edit profile</Link><Link className="btn btn-ghost btn-sm" href="/start">Start a campaign</Link></div>
           </div>
         )}
       </div>

@@ -40,8 +40,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="navlink keep" href="/match">Match</Link>
                   <Link className="navlink" href="/connections">Matches</Link>
                   <Link className="navlink" href="/me">My campaigns</Link>
-                  <Link className="navlink" href="/profile">Profile</Link>
-                  <Link className="navlink" href="/account">Account</Link>
+                  <Link className="navlink" href="/account">Profile</Link>
                   <SignOutButton />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>

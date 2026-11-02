@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /** Pages that need an account. Real checks happen on the server; this just saves a round trip. */
-const GATED = ["/start", "/match", "/profile", "/me", "/connections"];
+const GATED = ["/start", "/match", "/profile", "/account", "/me", "/connections"];
 
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -13,4 +13,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/start/:path*", "/match/:path*", "/profile/:path*", "/me/:path*", "/connections/:path*"] };
+export const config = { matcher: ["/start/:path*", "/match/:path*", "/profile/:path*", "/account/:path*", "/me/:path*", "/connections/:path*"] };
