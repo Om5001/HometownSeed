@@ -16,35 +16,29 @@ import crypto from "node:crypto";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { db } from "./db";
 import { HttpError } from "./http";
+import { PLATFORM, platformPlaceholders, type Platform } from "./platform";
 import type { User } from "./auth";
-import type { buildDocument } from "./coalition";
+import type { buildDocument, Person } from "./coalition";
 
+type Sql = ReturnType<typeof db>;
 type AgreementContent = Awaited<ReturnType<typeof buildDocument>>;
 export const TREASURY_TO = process.env.TREASURY_SUBMISSION_EMAIL || "trumpaccounts-applications@treasury.gov.mock";
 export const mockTreasuryEnabled = () => process.env.MOCK_TREASURY !== "0";
 
-export type DonorInput = {
-  entity_name: string; entity_address: string; ein: string;
-  entity_type: "501c3" | "state" | "subdivision" | "tribal";
-  rep_name: string; rep_title: string; rep_address: string; rep_email: string; rep_phone: string;
-  amount_cents: number;
-  recognition: boolean; recognition_name: string;
-  signature: string; certify: boolean;
-};
-
 export type Application = {
-  form: string; prepared_at: string; mock: boolean;
-  section1: Omit<DonorInput, "amount_cents" | "recognition" | "recognition_name" | "signature" | "certify">;
+  form: string; prepared_at: string; mock: boolean; placeholders: string[];
+  section1: Platform;
   section2: { amount_cents: number; class_type: "qualified_geographic_area"; note: string };
   section3: { recognition: boolean; recognition_name: string | null };
   section4: { representations: string[]; signed_name: string; signature: string; title: string; date: string; certified: boolean };
   attachment_a: { zip_codes: AgreementContent["qualified_class"]["zip_codes"]; ages: string; birth_years: string;
                   est_beneficiaries_in_class: number; est_beneficiaries_in_area: number; meets_5000_minimum: boolean };
-  attachment_b: { coalition: string; agreement_version: number; agreement_hash: string; parties: { campaign: string; organizers: string[]; pledged_cents: number }[];
-                  signatures: { campaign: string; signed_name: string; approved_at: string }[] };
+  attachment_b: { coalition: string; agreement_version: number; agreement_hash: string;
+                  campaigns: { campaign: string; organizers: string[]; pledged_cents: number }[];
+                  people: { name: string; role: string; pledged_cents: number; signed_name: string; signed_at: string }[] };
 };
 
-export const ENTITY_TYPES: Record<DonorInput["entity_type"], string> = {
+export const ENTITY_TYPES: Record<string, string> = {
   "501c3": "501(c)(3) Tax-exempt organization", state: "State or District of Columbia",
   subdivision: "Political subdivision of a State", tribal: "Indian Tribal Government",
 };
@@ -55,34 +49,10 @@ const REPRESENTATIONS = [
   "I have reviewed the Trump Accounts Qualified Class Contribution Agreement. A final agreement will be executed by both parties after Treasury receives and reviews this Application.",
 ];
 
-export function validateDonor(b: Partial<DonorInput>): DonorInput {
-  const s = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
-  const d = {
-    entity_name: s(b.entity_name), entity_address: s(b.entity_address, 300), ein: s(b.ein, 20),
-    entity_type: (["501c3", "state", "subdivision", "tribal"].includes(String(b.entity_type)) ? b.entity_type : "") as DonorInput["entity_type"],
-    rep_name: s(b.rep_name, 100), rep_title: s(b.rep_title, 100), rep_address: s(b.rep_address, 300),
-    rep_email: s(b.rep_email, 200).toLowerCase(), rep_phone: s(b.rep_phone, 40),
-    amount_cents: Math.round(Number(b.amount_cents) || 0),
-    recognition: !!b.recognition, recognition_name: s(b.recognition_name, 120),
-    signature: s(b.signature, 100), certify: b.certify === true,
-  };
-  const missing = (["entity_name", "entity_address", "ein", "entity_type", "rep_name", "rep_title", "rep_address", "rep_email", "rep_phone", "signature"] as const)
-    .filter((k) => !d[k]);
-  if (missing.length) throw new HttpError(400, "Fill in every field in Sections 1 and 4 (missing: " + missing.join(", ").replace(/_/g, " ") + ").");
-  if (!/^\d{2}-?\d{7}$/.test(d.ein)) throw new HttpError(400, "The EIN should look like 12-3456789.");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.rep_email)) throw new HttpError(400, "Enter a valid email for the authorized representative.");
-  if (d.amount_cents < 100) throw new HttpError(400, "Enter the proposed contribution amount.");
-  if (d.recognition && !d.recognition_name) throw new HttpError(400, "Give the name Treasury should use for public recognition, or choose not to authorize it.");
-  if (d.signature.toLowerCase() !== d.rep_name.toLowerCase()) throw new HttpError(400, "The signature must match the authorized representative's name.");
-  if (!d.certify) throw new HttpError(400, "The authorized representative must certify the application.");
-  d.ein = d.ein.includes("-") ? d.ein : d.ein.slice(0, 2) + "-" + d.ein.slice(2);
-  return d;
-}
-
-async function organizerOf(poolId: string, userId: string) {
-  const [m] = await db()`select 1 from campaigns c join campaign_members m on m.campaign_id = c.id
-                         where c.pool_id = ${poolId} and m.user_id = ${userId}`;
-  if (!m) throw new HttpError(403, "Only organizers in this coalition can do that.");
+/** Anyone named in the coalition agreement (organizers and donors) can see and manage the application. */
+async function partyOf(poolId: string, userId: string) {
+  const [m] = await db()`select 1 from coalition_people(${poolId}) where user_id = ${userId}`;
+  if (!m) throw new HttpError(403, "Only people in this coalition can do that.");
 }
 
 async function poolStatus(poolId: string) {
@@ -91,52 +61,73 @@ async function poolStatus(poolId: string) {
   return p;
 }
 
-/** Fills the application from the signed agreement plus the donor's details. */
-export async function prepareApplication(user: User, poolId: string, input: Partial<DonorInput>) {
-  await organizerOf(poolId, user.id);
-  const p = await poolStatus(poolId);
-  if (!["approved", "rejected"].includes(p.status)) throw new HttpError(400, "The application can be prepared once every campaign has signed the coalition agreement, and before it's sent.");
-  const d = validateDonor(input);
-  const sql = db();
+export const roleLabel = (p: Pick<Person, "organizer_of" | "owner_of" | "pledged_cents">) =>
+  [p.owner_of.length ? "Organizer (started " + p.owner_of.join(", ") + ")" : p.organizer_of.length ? "Co-organizer of " + p.organizer_of.join(", ") : "",
+   p.pledged_cents > 0 ? "Donor" : ""].filter(Boolean).join("; ") || "Member";
+
+/**
+ * Fills the application from the signed agreement. Hometown Seed's 501(c)(3) is the
+ * Qualified Donor (Sections 1 and 4, see lib/platform.ts). The amount is the total
+ * everyone signed for. Runs automatically when the last person signs; organizers can
+ * then change the public-recognition choice (Section 3).
+ */
+export async function prepareApplication(sql: Sql, poolId: string, recognition?: { recognition: boolean; recognition_name: string | null }) {
   const [doc] = await sql<{ id: string; version: number; content: AgreementContent; content_hash: string }[]>`
     select id, version, content, content_hash from coalition_documents where pool_id = ${poolId} and status = 'active' order by version desc limit 1`;
   if (!doc) throw new HttpError(400, "No signed agreement found.");
-  const sigs = await sql<{ campaign: string; signed_name: string; approved_at: string }[]>`
-    select c.name as campaign, a.signed_name, a.approved_at::text from document_approvals a join campaigns c on c.id = a.campaign_id
-    where a.document_id = ${doc.id} order by a.approved_at`;
+  const sigs = new Map((await sql<{ user_id: string; signed_name: string; signed_at: string }[]>`
+    select user_id, signed_name, signed_at::text from document_signatures where document_id = ${doc.id}`).map((r) => [r.user_id, r]));
   const c = doc.content;
+  const [prev] = await sql<{ application: Application | null }[]>`
+    select application from treasury_submissions where pool_id = ${poolId} order by created_at desc limit 1`;
+  const rec = recognition ?? prev?.application?.section3 ?? { recognition: true, recognition_name: c.coalition.name };
+  const amount = c.money.total_pledged_cents;
+  const today = new Date().toISOString().slice(0, 10);
   const app: Application = {
     form: "Trump Accounts Qualified Class Contribution Application (Treasury draft, updated June 10, 2026)",
-    prepared_at: new Date().toISOString(), mock: mockTreasuryEnabled(),
-    section1: { entity_name: d.entity_name, entity_address: d.entity_address, ein: d.ein, entity_type: d.entity_type,
-      rep_name: d.rep_name, rep_title: d.rep_title, rep_address: d.rep_address, rep_email: d.rep_email, rep_phone: d.rep_phone },
-    section2: { amount_cents: d.amount_cents, class_type: "qualified_geographic_area",
+    prepared_at: new Date().toISOString(), mock: mockTreasuryEnabled(), placeholders: platformPlaceholders(),
+    section1: { ...PLATFORM },
+    section2: { amount_cents: amount, class_type: "qualified_geographic_area",
       note: "Qualified Geographic Area class under IRC 530A(f)(3)(B). This class type is not listed on the draft form; details are in Attachment A, as the form's instructions direct." },
-    section3: { recognition: d.recognition, recognition_name: d.recognition ? d.recognition_name : null },
-    section4: { representations: REPRESENTATIONS, signed_name: d.rep_name, signature: d.signature, title: d.rep_title,
-      date: new Date().toISOString().slice(0, 10), certified: true },
+    section3: { recognition: rec.recognition, recognition_name: rec.recognition ? rec.recognition_name : null },
+    section4: { representations: REPRESENTATIONS, signed_name: PLATFORM.rep_name, signature: PLATFORM.rep_name, title: PLATFORM.rep_title,
+      date: today, certified: true },
     attachment_a: { zip_codes: c.qualified_class.zip_codes, ages: c.qualified_class.ages, birth_years: c.qualified_class.birth_years,
       est_beneficiaries_in_class: c.qualified_class.est_beneficiaries_in_class, est_beneficiaries_in_area: c.qualified_class.est_beneficiaries_in_area,
       meets_5000_minimum: c.qualified_class.meets_5000_minimum },
     attachment_b: { coalition: c.coalition.name, agreement_version: doc.version, agreement_hash: doc.content_hash,
-      parties: c.parties.map((x) => ({ campaign: x.campaign, organizers: x.organizers.map((o) => `${o.name} (${o.role})`), pledged_cents: x.pledged_cents })),
-      signatures: sigs },
+      campaigns: c.parties.map((x) => ({ campaign: x.campaign, organizers: x.organizers.map((o) => `${o.name} (${o.role})`), pledged_cents: x.pledged_cents })),
+      people: (c.people ?? []).map((p) => ({ name: p.name, role: roleLabel(p), pledged_cents: p.pledged_cents,
+        signed_name: sigs.get(p.user_id)?.signed_name ?? "(account deleted)", signed_at: sigs.get(p.user_id)?.signed_at ?? "" })) },
   };
   const hash = crypto.createHash("sha256").update(JSON.stringify(app)).digest("hex");
+  const perChild = c.qualified_class.est_beneficiaries_in_class ? Math.floor(amount / c.qualified_class.est_beneficiaries_in_class) : 0;
   const [row] = await sql<{ id: string }[]>`select id from treasury_submissions where pool_id = ${poolId} and status in ('draft', 'rejected') order by created_at desc limit 1`;
   if (row) {
-    await sql`update treasury_submissions set application = ${sql.json(app as never)}, application_hash = ${hash}, amount_cents = ${d.amount_cents},
-              per_child_cents = ${c.qualified_class.est_beneficiaries_in_class ? Math.floor(d.amount_cents / c.qualified_class.est_beneficiaries_in_class) : 0},
-              status = 'draft', mock = ${app.mock} where id = ${row.id}`;
+    await sql`update treasury_submissions set application = ${sql.json(app as never)}, application_hash = ${hash}, amount_cents = ${amount},
+              per_child_cents = ${perChild}, est_beneficiaries = ${c.qualified_class.est_beneficiaries_in_class},
+              zctas = ${c.qualified_class.zip_codes.map((z) => z.zcta)}::char(5)[], status = 'draft', mock = ${app.mock} where id = ${row.id}`;
   } else {
-    await sql`insert into treasury_submissions (pool_id, zctas, min_age, max_age, est_beneficiaries, amount_cents, per_child_cents, application, application_hash, mock)
+    await sql`insert into treasury_submissions (pool_id, zctas, min_age, max_age, est_beneficiaries, amount_cents, per_child_cents, application, application_hash, mock, notes)
               select ${poolId}, ${c.qualified_class.zip_codes.map((z) => z.zcta)}::char(5)[], p.min_age, p.max_age, ${c.qualified_class.est_beneficiaries_in_class},
-                     ${d.amount_cents}, ${c.qualified_class.est_beneficiaries_in_class ? Math.floor(d.amount_cents / c.qualified_class.est_beneficiaries_in_class) : 0},
-                     ${sql.json(app as never)}, ${hash}, ${app.mock}
+                     ${amount}, ${perChild}, ${sql.json(app as never)}, ${hash}, ${app.mock}, ${"From coalition agreement v" + doc.version}
               from pools p where p.id = ${poolId}`;
   }
-  if (p.status === "rejected") await sql`update pools set status = 'approved' where id = ${poolId}`;
   return { hash };
+}
+
+/** Organizers and donors choose how Treasury may recognize the gift (Section 3), before it's sent. */
+export async function updateRecognition(user: User, poolId: string, b: { recognition?: unknown; recognition_name?: unknown }) {
+  await partyOf(poolId, user.id);
+  const p = await poolStatus(poolId);
+  if (!["approved", "rejected"].includes(p.status)) throw new HttpError(400, "The application can be changed after everyone signs and before it's sent.");
+  const recognition = b.recognition === true;
+  const name = String(b.recognition_name ?? "").trim().slice(0, 120);
+  if (recognition && !name) throw new HttpError(400, "Give the name Treasury should use for public recognition, or choose not to authorize it.");
+  const sql = db();
+  await prepareApplication(sql, poolId, { recognition, recognition_name: recognition ? name : null });
+  if (p.status === "rejected") await sql`update pools set status = 'approved' where id = ${poolId}`;
+  return { ok: true };
 }
 
 export async function getSubmission(poolId: string) {
@@ -156,9 +147,9 @@ export async function renderApplicationPdf(app: Application, hash: string, statu
   pdf.setProducer("Hometown Seed");
   const font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const W = 612, H = 792, M = 54;
-  let page: PDFPage = pdf.addPage([W, H]), y = H - M;
+  let page: PDFPage = pdf.addPage([W, H]), y = H - M - 6;
   const clean = (t: string) => t.replace(/[‐-―]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[^\x20-\x7e\xa0-\xff]/g, "");
-  const newPage = () => { page = pdf.addPage([W, H]); y = H - M - 6; header(); };
+  const newPage = () => { page = pdf.addPage([W, H]); y = H - M - 12; header(); };
   const need = (h: number) => { if (y - h < M) newPage(); };
   const text = (t: string, o: { f?: PDFFont; s?: number; x?: number; c?: [number, number, number] } = {}) => {
     const f = o.f ?? font, s = o.s ?? 10, x = o.x ?? M, maxW = W - M - x;
@@ -180,6 +171,7 @@ export async function renderApplicationPdf(app: Application, hash: string, statu
   function header() {
     page.drawText(app.mock ? "MOCK - prepared by Hometown Seed - NOT SUBMITTED TO TREASURY" : "Prepared by Hometown Seed",
       { x: M, y: H - 30, size: 8, font: bold, color: rgb(0.75, 0.2, 0.18) });
+    if (app.placeholders?.length) page.drawText(clean(`DRAFT: nonprofit details still to be filled in (${app.placeholders.join(", ")})`), { x: M, y: H - 49, size: 7, font: bold, color: rgb(0.75, 0.2, 0.18) });
     page.drawText(clean(`Application fingerprint ${hash.slice(0, 16)}... | status: ${status}`), { x: M, y: H - 40, size: 7, font, color: rgb(0.4, 0.45, 0.5) });
   }
   header();
@@ -218,7 +210,7 @@ export async function renderApplicationPdf(app: Application, hash: string, statu
   gap(6);
   need(2 * 16);
   text(`Authorized Representative Name: ${app.section4.signed_name}  |  Title: ${app.section4.title}`);
-  text(`Signature (typed, electronic): /s/ ${app.section4.signature}  |  Date: ${app.section4.date}`);
+  text(`Signature (electronic, for the Qualified Donor): /s/ ${app.section4.signature}  |  Date: ${app.section4.date}`);
 
   newPage();
   const a = app.attachment_a;
@@ -234,9 +226,12 @@ export async function renderApplicationPdf(app: Application, hash: string, statu
   text("ATTACHMENT B - COALITION AGREEMENT", { f: bold, s: 12 }); gap(4);
   text(`Coalition: ${b.coalition}. Agreement version ${b.agreement_version}, SHA-256 ${b.agreement_hash}.`, { s: 9 });
   gap(4);
-  for (const p of b.parties) text(`${p.campaign}: ${p.organizers.join(", ")}. Pledged ${usd(p.pledged_cents)}.`, { s: 9, x: M + 8 });
-  gap(4); text("Signed by:", { f: bold, s: 9 });
-  for (const s of b.signatures) text(`${s.campaign}: ${s.signed_name}, ${s.approved_at.slice(0, 16)}`, { s: 9, x: M + 8 });
+  for (const p of b.campaigns) text(`Campaign "${p.campaign}": organized by ${p.organizers.join(", ")}. Pledged ${usd(p.pledged_cents)}.`, { s: 9, x: M + 8 });
+  gap(6); text("Everyone in the coalition, each of whom signed the agreement:", { f: bold, s: 9 }); gap(2);
+  const pc = [M, M + 120, M + 330, M + 390];
+  const prow = (cells: string[], f = font) => { need(13); cells.forEach((t, i) => page.drawText(clean(t).slice(0, i === 1 ? 50 : 44), { x: pc[i], y: y - 9, size: 8, font: f })); y -= 13; };
+  prow(["Name", "Role", "Pledged", "Signed (typed name, UTC)"], bold);
+  for (const x of b.people) prow([x.name, x.role, x.pledged_cents ? usd(x.pledged_cents) : "-", x.signed_at ? `/s/ ${x.signed_name}, ${x.signed_at.slice(0, 16)}` : x.signed_name]);
   gap(10);
   text(`Application fingerprint (SHA-256): ${hash}`, { s: 7, c: [0.4, 0.45, 0.5] });
   return pdf.save();
@@ -249,9 +244,12 @@ async function outbox(poolId: string, m: { direction?: "out" | "in"; to: string;
 
 /** "Send" the application to Treasury (mock: recorded in the outbox, nothing leaves the app). */
 export async function submitApplication(user: User, poolId: string) {
-  await organizerOf(poolId, user.id);
+  await partyOf(poolId, user.id);
   const p = await poolStatus(poolId);
-  if (p.status !== "approved") throw new HttpError(400, "Prepare the application after everyone signs, then send it.");
+  if (!["approved", "rejected"].includes(p.status)) throw new HttpError(400, "The application is sent after everyone in the coalition signs.");
+  if (!mockTreasuryEnabled() && platformPlaceholders().length)
+    throw new HttpError(400, "Fill in Hometown Seed's nonprofit details first (missing: " + platformPlaceholders().join(", ") + ").");
+  if (p.status === "rejected") await prepareApplication(db(), poolId);
   const s = await getSubmission(poolId);
   if (!s?.application) throw new HttpError(400, "Fill in the application first.");
   const ref = `${s.mock ? "MOCK-" : ""}TA-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
@@ -271,7 +269,7 @@ export async function submitApplication(user: User, poolId: string) {
 /** Simulates Treasury's side, for trying the flow before a real connection exists. */
 export async function mockTreasury(user: User, poolId: string, action: "approve" | "reject" | "distribute") {
   if (!mockTreasuryEnabled()) throw new HttpError(404, "The Treasury simulator is off.");
-  await organizerOf(poolId, user.id);
+  await partyOf(poolId, user.id);
   const p = await poolStatus(poolId);
   const s = await getSubmission(poolId);
   if (!s) throw new HttpError(400, "No application yet.");
@@ -299,7 +297,7 @@ export async function mockTreasury(user: User, poolId: string, action: "approve"
 
 /** Step 4: the charity reports its ACH or wire payment to Treasury. */
 export async function recordPayment(user: User, poolId: string, b: { method?: string; reference?: string; amount_cents?: number }) {
-  await organizerOf(poolId, user.id);
+  await partyOf(poolId, user.id);
   const p = await poolStatus(poolId);
   if (p.status !== "accepted") throw new HttpError(400, "Send the money after Treasury approves the application.");
   const method = b.method === "wire" ? "wire" : "ach";

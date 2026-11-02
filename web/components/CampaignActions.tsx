@@ -10,7 +10,13 @@ async function post(url: string, body: unknown) {
   return d;
 }
 
-export function PledgeForm({ slug, kids, where, user }: { slug: string; kids: number; where: string; user: { display_name: string; email: string } | null }) {
+export function PledgeForm({ slug, kids, where, user, paused }: { slug: string; kids: number; where: string; user: { display_name: string; email: string } | null; paused?: string | null }) {
+  if (paused) return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="subhead"><h3><span className="n">$</span>Pledges paused</h3></div>
+      <p className="hint">{paused}</p>
+    </div>
+  );
   if (!user) return (
     <div className="stack" style={{ gap: 10 }}>
       <div className="subhead"><h3><span className="n">$</span>Pledge to this campaign</h3></div>
@@ -147,6 +153,47 @@ export function CampaignSettings({ slug, matching, friends }: { slug: string; ma
       <label className="check"><input type="checkbox" checked={m} onChange={(e) => save(e.target.checked, f)} /><span>Match with others (show in matching and allow pooling)</span></label>
       <label className="check"><input type="checkbox" checked={f} onChange={(e) => save(m, e.target.checked)} /><span>Invite friends as co-organizers</span></label>
       <p className="small muted">{!m && !f ? "Running on your own." : ""} {msg}</p>
+    </div>
+  );
+}
+
+/** Organizers can take the campaign out of its coalition; the owner can delete it. Both only before it goes to Treasury. */
+export function CampaignDanger({ slug, name, inCoalition, isOwner, locked, pledges }: { slug: string; name: string; inCoalition: boolean; isOwner: boolean; locked: boolean; pledges: number }) {
+  const router = useRouter();
+  const [mode, setMode] = useState<"" | "leave" | "delete">(""); const [ok, setOk] = useState(false); const [typed, setTyped] = useState("");
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  if (locked) return <p className="small muted">This campaign&apos;s coalition has gone to Treasury, so it can&apos;t leave or be deleted.</p>;
+  const go = async (url: string, body: object, to: string) => {
+    setBusy(true); setErr("");
+    try { await post(url, body); router.push(to); router.refresh(); } catch (x) { setErr((x as Error).message); setBusy(false); }
+  };
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {inCoalition && <button className="btn btn-ghost btn-sm" onClick={() => { setMode("leave"); setOk(false); }}>Leave the coalition</button>}
+        {isOwner && <button className="btn btn-ghost btn-sm" style={{ color: "var(--red)" }} onClick={() => { setMode("delete"); setTyped(""); }}>Delete campaign</button>}
+      </div>
+      {mode === "leave" && (
+        <div className="stack danger" style={{ gap: 8, border: "1px solid", borderRadius: 12, padding: 12 }}>
+          <p className="small">{name} leaves the coalition with its organizers and donors and runs on its own again. The campaigns that stay get a new agreement to sign.</p>
+          <label className="check"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /><span>Take {name} out of the coalition</span></label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm" style={{ background: "var(--red)", color: "#fff" }} disabled={!ok || busy} onClick={() => go(`/api/campaigns/${slug}/leave-coalition`, { confirm: true }, `/c/${slug}`)}>{busy ? "Leaving…" : "Leave"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setMode("")}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {mode === "delete" && (
+        <div className="stack danger" style={{ gap: 8, border: "1px solid", borderRadius: 12, padding: 12 }}>
+          <p className="small">This permanently deletes {name}{pledges ? ` and its ${pledges} pledge${pledges === 1 ? "" : "s"} (promises only; no money has moved)` : ""}. If it&apos;s in a coalition, it leaves, and the others sign a new agreement. This can&apos;t be undone.</p>
+          <label className="field"><span>Type DELETE to confirm</span><input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} /></label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm" style={{ background: "var(--red)", color: "#fff" }} disabled={typed.trim().toLowerCase() !== "delete" || busy} onClick={() => go(`/api/campaigns/${slug}/delete`, { confirm: typed }, "/me?deleted=1")}>{busy ? "Deleting…" : "Delete campaign"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setMode("")}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {err && <p className="err">{err}</p>}
     </div>
   );
 }

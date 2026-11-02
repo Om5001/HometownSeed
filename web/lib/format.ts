@@ -46,3 +46,9 @@ export const placeLabel = (p: { place_name?: string | null; place_state?: string
 
 export const slugify = (s: string) =>
   s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "campaign";
+
+/** Why a campaign isn't taking pledges right now, from its coalition's status. */
+export const pledgePause = (poolStatus: string) =>
+  poolStatus === "confirmed" ? "Pledges are paused while this campaign's coalition signs its agreement, so everyone signs for the same amount."
+  : ["approved", "rejected", "submitted", "accepted"].includes(poolStatus) ? "Pledges are paused: this campaign's coalition has signed its agreement and is with Treasury."
+  : "This campaign's coalition has already sent its contribution to Treasury.";

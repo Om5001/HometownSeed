@@ -229,20 +229,28 @@ test("goal types, run options, and the coalition tracker", { skip }, async () =>
   assert.equal(c2.data.status, "confirmed");
   const poolId = c2.data.poolId;
 
-  // the agreement exists and is private
+  // the agreement names everyone (organizers and the donor) and is private to them
   const page = await hal(`/coalitions/${poolId}`);
   assert.match(page.data, /Coalition agreement/);
-  assert.match(page.data, /Hal/); assert.match(page.data, /Ivy/);
+  assert.match(page.data, /Hal/); assert.match(page.data, /Ivy/); assert.match(page.data, /Joe/);
   assert.match(page.data, /\$1,200/);  // 500 + 700 pledged
-  assert.match((await joe(`/coalitions/${poolId}`)).data, /This agreement is private/);
+  assert.match(page.data, /Hometown Seed Foundation/);
+  const out = client(); await signup(out, "Oz");
+  assert.match((await out(`/coalitions/${poolId}`)).data, /This agreement is private/);
+  assert.match((await joe(`/coalitions/${poolId}`)).data, /Sign or leave/, "the donor signs too");
   const docId = (page.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
   assert.ok(docId, "document id on the page");
 
-  // step 3: both sign
-  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: pc.data.slug, name: "Hal H", agree: false })).status, 400);
-  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: open.data.slug, name: "Hal H", agree: true })).status, 403);
-  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: pc.data.slug, name: "Hal H", agree: true })).data.status, "confirmed");
-  assert.equal((await ivy(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: open.data.slug, name: "Ivy I", agree: true })).data.status, "approved");
+  // pledges pause while it's out for signature
+  const paused = await out(`/api/campaigns/${pc.data.slug}/pledges`, { amountCents: 1000 });
+  assert.equal(paused.status, 400); assert.match(paused.data.error, /paused/);
+
+  // step 2 (cont.): everyone signs
+  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Hal H", agree: false })).status, 400);
+  assert.equal((await out(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Oz", agree: true })).status, 403);
+  assert.equal((await hal(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Hal H", agree: true })).data.waiting, 2);
+  assert.equal((await ivy(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Ivy I", agree: true })).data.waiting, 1);
+  assert.equal((await joe(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Joe J", agree: true })).data.status, "approved");
   const after = await hal(`/c/${pc.data.slug}`);
   assert.match(after.data, /Everyone signed/);
 
@@ -264,21 +272,18 @@ test("Treasury application: prepare, PDF, send (mock), approve, pay, distribute"
   const poolId = conf.data.poolId;
   const page = await lea(`/coalitions/${poolId}`);
   const docId = (page.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
-  // can't prepare before signing
-  const donor = { entity_name: "Brooklyn Community Foundation", entity_address: "1 Main St, Brooklyn, NY 11201", ein: "123456789",
-    entity_type: "501c3", rep_name: "Lea L", rep_title: "Executive Director", rep_address: "1 Main St, Brooklyn, NY 11201",
-    rep_email: "lea@example.org", rep_phone: "718-555-0100", amount_cents: 150000, recognition: true, recognition_name: "Marine Park neighbors",
-    signature: "Lea L", certify: true };
-  assert.equal((await lea(`/api/coalitions/${poolId}/application`, donor)).status, 400);
-  await lea(`/api/coalitions/${poolId}/approve`, { documentId: docId, campaign: c.data.slug, name: "Lea L", agree: true });
+  // the application is filled in automatically once everyone (organizer and donor) signs
+  assert.equal((await lea(`/api/coalitions/${poolId}/submit`, {})).status, 400, "can't send before everyone signs");
+  assert.equal((await lea(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Lea L", agree: true })).data.status, "confirmed");
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { recognition: true, recognition_name: "X" })).status, 400, "not yet");
+  assert.equal((await max(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Max M", agree: true })).data.status, "approved");
 
-  assert.equal((await outsider(`/api/coalitions/${poolId}/application`, donor)).status, 403);
-  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, ein: "12" })).status, 400);
-  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, signature: "Someone Else" })).status, 400);
-  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { ...donor, certify: false })).status, 400);
-  assert.equal((await lea(`/api/coalitions/${poolId}/submit`, {})).status, 400, "can't send before preparing");
-  const prep = await lea(`/api/coalitions/${poolId}/application`, donor);
-  assert.equal(prep.status, 200, JSON.stringify(prep.data));
+  assert.equal((await outsider(`/api/coalitions/${poolId}/application`, { recognition: false })).status, 403);
+  assert.equal((await lea(`/api/coalitions/${poolId}/application`, { recognition: true, recognition_name: "" })).status, 400);
+  assert.equal((await max(`/api/coalitions/${poolId}/application`, { recognition: true, recognition_name: "Marine Park neighbors" })).status, 200, "donors can manage it too");
+  const ready = await lea(`/coalitions/${poolId}`);
+  assert.match(ready.data, /Hometown Seed Foundation/);
+  assert.match(ready.data, /2(<!-- -->)? (<!-- -->)?people(<!-- -->)? signed/);
 
   const pdf = await fetch(BASE + `/api/coalitions/${poolId}/application/pdf`, { headers: { cookie: lea.cookie() } });
   assert.equal(pdf.headers.get("content-type"), "application/pdf");
@@ -288,6 +293,8 @@ test("Treasury application: prepare, PDF, send (mock), approve, pay, distribute"
 
   const sent = await lea(`/api/coalitions/${poolId}/submit`, {});
   assert.match(sent.data.reference, /^MOCK-TA-\d{8}-[0-9A-F]{6}$/);
+  assert.equal((await lea(`/api/campaigns/${c.data.slug}/delete`, { confirm: "DELETE" })).status, 400, "can't delete once it's with Treasury");
+  assert.equal((await max(`/api/coalitions/${poolId}/leave`, { confirm: true })).status, 400, "can't leave once it's with Treasury");
   assert.equal((await lea(`/api/coalitions/${poolId}/payment`, { method: "ach", reference: "x", amount_cents: 150000 })).status, 400, "no payment before approval");
   assert.equal((await lea(`/api/coalitions/${poolId}/treasury-mock`, { action: "approve" })).data.status, "accepted");
   assert.equal((await lea(`/api/coalitions/${poolId}/payment`, { method: "wire", reference: "FED-123", amount_cents: 150000 })).data.status, "funded");
@@ -296,4 +303,52 @@ test("Treasury application: prepare, PDF, send (mock), approve, pay, distribute"
   assert.match(done.data, /Distributed to children/);
   assert.match(done.data, /To Treasury: (<!-- -->)?Qualified Class Contribution Application/);
   assert.match((await lea(`/c/${c.data.slug}`)).data, /In kids/);
+});
+
+test("leaving a coalition and deleting a campaign", { skip }, async () => {
+  const amy = client(), bo = client(), dot = client();
+  await signup(amy, "Amy"); await signup(bo, "Bo"); await signup(dot, "Dot");
+  const a = await amy("/api/campaigns", { name: `Leave A ${stamp}`, zips: ["11234"], goalType: "open", openToMatching: true });
+  const b = await bo("/api/campaigns", { name: `Leave B ${stamp}`, zips: ["11236"], goalType: "open", openToMatching: true });
+  await dot(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 20000 });
+  await dot(`/api/campaigns/${b.data.slug}/pledges`, { amountCents: 30000 });
+  const req = await amy(`/api/campaigns/${a.data.slug}/pool-requests`, { toSlug: b.data.slug });
+  await bo(`/api/pool-requests/${req.data.id}`, { action: "accept" });
+  await amy(`/api/campaigns/${a.data.slug}/coalition`, {});
+  const conf = await bo(`/api/campaigns/${b.data.slug}/coalition`, {});
+  assert.equal(conf.data.status, "confirmed");
+  const poolId = conf.data.poolId;
+  assert.match((await amy(`/coalitions/${poolId}`)).data, /version <!-- -->1|version 1/);
+
+  // the donor leaves: pledges withdrawn, new version for the rest
+  assert.equal((await dot(`/api/coalitions/${poolId}/leave`, {})).status, 400, "needs confirmation");
+  const left = await dot(`/api/coalitions/${poolId}/leave`, { confirm: true });
+  assert.equal(left.status, 200, JSON.stringify(left.data));
+  assert.equal(left.data.status, "confirmed"); assert.equal(left.data.newAgreement, true);
+  const v2 = await amy(`/coalitions/${poolId}`);
+  assert.match(v2.data, /version <!-- -->2|version 2/);
+  assert.doesNotMatch(v2.data.split("5. Signatures")[1], /Dot/);
+  assert.match((await dot(`/coalitions/${poolId}`)).data, /This agreement is private/);
+  assert.equal((await amy(`/api/campaigns/${a.data.slug}`)).data.campaign.raised, 0);
+  assert.equal((await dot(`/api/coalitions/${poolId}/leave`, { confirm: true })).status, 403, "already out");
+
+  // Bo takes his campaign out: Amy is a coalition of one, version 3
+  assert.equal((await dot(`/api/campaigns/${b.data.slug}/leave-coalition`, { confirm: true })).status, 403);
+  const out = await bo(`/api/campaigns/${b.data.slug}/leave-coalition`, { confirm: true });
+  assert.equal(out.data.status, "confirmed");
+  assert.equal((await bo(`/api/campaigns/${b.data.slug}`)).data.campaign.pool_id, null);
+  const v3 = await amy(`/coalitions/${poolId}`);
+  assert.match(v3.data, /version <!-- -->3|version 3/);
+  const doc3 = (v3.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
+  assert.equal((await amy(`/api/coalitions/${poolId}/approve`, { documentId: doc3, name: "Amy A", agree: true })).data.status, "approved");
+
+  // Amy leaves too: her campaign goes with her and the coalition dissolves
+  assert.equal((await amy(`/api/coalitions/${poolId}/leave`, { confirm: true })).data.status, "dissolved");
+  assert.equal((await amy(`/api/campaigns/${a.data.slug}`)).data.campaign.pool_id, null);
+
+  // deleting a campaign: owner only, typed confirmation
+  assert.equal((await bo(`/api/campaigns/${b.data.slug}/delete`, { confirm: "nope" })).status, 400);
+  assert.equal((await dot(`/api/campaigns/${b.data.slug}/delete`, { confirm: "DELETE" })).status, 403);
+  assert.equal((await bo(`/api/campaigns/${b.data.slug}/delete`, { confirm: "delete" })).status, 200);
+  assert.equal((await bo(`/api/campaigns/${b.data.slug}`)).status, 404);
 });

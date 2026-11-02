@@ -131,3 +131,13 @@ a.btn{text-decoration:none}
 .acct-sec { scroll-margin-top: 80px; padding-top: 18px; }
 .acct-sec h2 { font-size: clamp(22px, 3vw, 30px); font-weight: 900; margin: 10px 0 4px; }
 .acct-sec + .acct-sec { border-top: 1px solid var(--line, #d5dbe3); margin-top: 28px; }
+
+/* Treasury application summary */
+.appsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px; }
+.appsum > div { border: 1px solid var(--line, #d5dbe3); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.appsum span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .7; font-weight: 700; }
+.appsum small { display: block; opacity: .8; overflow-wrap: anywhere; }
+/* Coalition signing */
+.signers td.st { white-space: nowrap; }
+.leave-box { border-top: 1px solid var(--line, #d5dbe3); margin-top: 16px; padding-top: 14px; }
+.danger { border-color: var(--red) !important; }

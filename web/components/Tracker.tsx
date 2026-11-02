@@ -13,14 +13,15 @@ export function Tracker({ c, st, isOrganizer, minKids }: { c: C; st: CoalitionSt
   const kids = st.pool?.kids_u18 ?? c.kids_u18;
   const ready = st.pool ? st.pool.meets_min : c.meets_min;
   const n = Math.max(st.campaigns.length, 1);
-  const confirmed = st.campaigns.filter((x) => x.confirmed).length, approved = st.campaigns.filter((x) => x.approved).length;
+  const confirmed = st.campaigns.filter((x) => x.confirmed).length;
+  const signedN = st.signers.filter((x) => x.signed).length, people = st.signers.length;
   const me = st.campaigns.find((x) => x.slug === c.slug);
-  const step2 = at > 1 ? `${n} campaign${n > 1 ? "s" : ""} · ${fmt(kids)} kids · agreement signed`
-    : status === "confirmed" ? `Agreement: ${approved} of ${n} signed`
+  const step2 = at > 1 ? `${n} campaign${n > 1 ? "s" : ""} · ${people} ${people === 1 ? "person" : "people"} · agreement signed`
+    : status === "confirmed" ? `Agreement: ${signedN} of ${people} people signed`
     : st.pool ? `${confirmed} of ${n} ready · ${fmt(kids)} kids` : `${fmt(kids)} of ${fmt(minKids)} kids`;
   const step3 = at > 2 ? "Treasury approved" : status === "submitted" ? "Sent, waiting on Treasury"
-    : status === "rejected" ? "Not approved: revise and resend" : status === "approved" ? "Prepare and send the application" : "Treasury reviews the application";
-  const step4 = at > 3 ? "In kids' accounts" : status === "funded" ? "Paid, Treasury distributing" : status === "accepted" ? "Send by ACH or wire" : "Charity pays Treasury";
+    : status === "rejected" ? "Not approved: revise and resend" : status === "approved" ? "Review and send the application" : "Treasury reviews the application";
+  const step4 = at > 3 ? "In kids' accounts" : status === "funded" ? "Paid, Treasury distributing" : status === "accepted" ? "Send by ACH or wire" : "Hometown Seed pays Treasury";
   const href = st.pool ? `/coalitions/${st.pool.id}` : "#";
   return (
     <section className="panel">
@@ -32,6 +33,15 @@ export function Tracker({ c, st, isOrganizer, minKids }: { c: C; st: CoalitionSt
         <li className={cls(3)}><span className="dot">{at > 3 ? "✓" : 4}</span><div><b>Money sent</b><small>{step4}</small></div></li>
       </ol>
 
+      {!isOrganizer && st.me.party && status === "confirmed" && (
+        <div className="trk-action">
+          <p className="small">{st.me.signed ? "You signed. Waiting for the others." : "You pledged to this coalition, so you're named in its agreement. Sign it, or leave and withdraw your pledge."}</p>
+          <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href}>{st.me.signed ? "View the agreement" : "Review and sign, or leave"}</Link>
+        </div>
+      )}
+      {!isOrganizer && st.me.party && !["forming", "confirmed", "none"].includes(status) && (
+        <div className="trk-action"><Link className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} href={href + "#treasury"}>View the agreement and application</Link></div>
+      )}
       {isOrganizer && (
         <div className="trk-action">
           {status === "none" || status === "forming" ? (ready ? (
@@ -42,10 +52,10 @@ export function Tracker({ c, st, isOrganizer, minKids }: { c: C; st: CoalitionSt
                   <ConfirmCoalitionButton slug={c.slug} />
                 </>
           ) : <p className="small">An area needs {fmt(minKids)} kids. You have about {fmt(kids)}: pool with a match below, or start a new campaign with more ZIP codes.</p>) : null}
-          {status === "confirmed" && <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href}>{me?.approved ? "View the agreement" : "Review and sign the agreement"}</Link>}
+          {status === "confirmed" && <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href}>{st.me.signed ? `View the agreement (${signedN} of ${people} signed)` : "Review and sign, or leave"}</Link>}
           {(status === "approved" || status === "rejected") && (<>
-            <p className="small">Everyone signed. Next, the partner charity fills in Treasury&apos;s contribution application ({money(st.pool!.raised)} pledged so far) and sends it.</p>
-            <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href + "#treasury"}>{status === "rejected" ? "Revise the application" : "Prepare the Treasury application"}</Link>
+            <p className="small">Everyone signed. Hometown Seed&apos;s nonprofit has filled in Treasury&apos;s contribution application for {money(st.pool!.raised)}. Check it and send it.</p>
+            <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href + "#treasury"}>{status === "rejected" ? "Revise and resend the application" : "Review and send the application"}</Link>
           </>)}
           {status === "submitted" && <Link className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} href={href + "#treasury"}>View the application status</Link>}
           {status === "accepted" && <Link className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} href={href + "#treasury"}>Record the payment to Treasury</Link>}

@@ -5,9 +5,11 @@ import { findMatches, getCampaign, getRules, memberRole } from "@/lib/queries";
 import { ageLabel, ago, fmt, initials, money, moneyC, perChild, placeLabel } from "@/lib/format";
 import { AreaMap } from "@/components/AreaMap";
 import { MatchCard } from "@/components/MatchCard";
-import { CampaignSettings, InvitePanel, PledgeForm, PoolButton, RequestButtons, ShareButton } from "@/components/CampaignActions";
+import { CampaignDanger, CampaignSettings, InvitePanel, PledgeForm, PoolButton, RequestButtons, ShareButton } from "@/components/CampaignActions";
 import { Tracker } from "@/components/Tracker";
-import { coalitionState } from "@/lib/coalition";
+import { coalitionState, LOCKED } from "@/lib/coalition";
+import { pledgePause } from "@/lib/format";
+import { PLATFORM } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
   const role = await memberRole(c.id, user?.id);
   const [matches, st] = await Promise.all([
     findMatches(zips.map((z) => z.zcta), c.goal ?? 0, c.min_age, c.max_age, c.id, 6),
-    coalitionState(c),
+    coalitionState(c, user?.id),
   ]);
   const pendingTo = new Set(outgoing.map((o) => o.to_campaign));
 
@@ -83,12 +85,12 @@ export default async function CampaignPage({ params, searchParams }: { params: P
               <li><span className={"ic " + (perKidOk ? "ok" : "no")}>{perKidOk ? "✓" : "i"}</span>
                 <div><b>${(rules.min_per_child_cents / 100).toFixed(0)} per child <span className="tag o">Treasury guidance</span></b><small>{perKidOk ? `${perChild(unit.raised / unit.kids)} per child pledged.` : `${money(unit.raised)} of ${money(minTotal)} (${perChild(unit.kids ? unit.raised / unit.kids : 0)} per child so far). IRS Notice 2025-68 says applications in 2026–2027 need at least this; the final amount is set in Treasury's agreement.`}</small></div></li>
               )}
-              <li><span className="ic no">…</span><div><b>Sent by a partner charity</b><small>Only charities, foundations, donor-advised funds and governments can make these contributions. Submission opens once a charity partner is connected.</small></div></li>
+              <li><span className="ic ok">✓</span><div><b>Sent by a 501(c)(3)</b><small>Only charities, foundations, donor-advised funds and governments can make these contributions. {PLATFORM.entity_name}, Hometown Seed&apos;s nonprofit, receives the gifts and applies to Treasury for the coalition.</small></div></li>
             </ul>
           </section>
 
           <section className="panel" id="give">
-            <PledgeForm slug={c.slug} kids={c.kids} where={where} user={user} />
+            <PledgeForm slug={c.slug} kids={c.kids} where={where} user={user} paused={st.pool && st.pool.status !== "forming" ? pledgePause(st.pool.status) : null} />
           </section>
         </div>
 
@@ -149,6 +151,9 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <section className="panel">
               <div className="panel-head"><h2>Settings</h2></div>
               <CampaignSettings slug={c.slug} matching={c.open_to_matching} friends={c.invite_friends} />
+              <div className="leave-box">
+                <CampaignDanger slug={c.slug} name={c.name} inCoalition={!!c.pool_id} isOwner={role === "owner"} locked={!!st.pool && LOCKED.includes(st.pool.status)} pledges={pledges.length} />
+              </div>
             </section>
           )}
 

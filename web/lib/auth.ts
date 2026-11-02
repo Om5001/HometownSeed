@@ -269,6 +269,11 @@ export async function deleteAccount(user: User, password: string) {
   const sql = db();
   const [u] = await sql<{ password_hash: string | null }[]>`select password_hash from app_users where id = ${user.id}`;
   if (u?.password_hash && !(await verifyPassword(password, u.password_hash)).ok) throw new AuthError(401, "That password is incorrect.");
+  // Coalitions this person was signing in: everyone left gets a fresh agreement
+  const pools = await sql<{ id: string; status: string }[]>`
+    select p.id, p.status from pools p where p.status in ('confirmed', 'approved', 'rejected')
+      and exists (select 1 from coalition_people(p.id) x where x.user_id = ${user.id})`;
   await sql`select delete_account(${user.id})`;
+  if (pools.length) await (await import("./coalition")).redrawAfterDeparture(pools);
   (await cookies()).delete(COOKIE);
 }

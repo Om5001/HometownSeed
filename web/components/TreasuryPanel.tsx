@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Application, DonorInput } from "@/lib/treasury";
+import type { Application } from "@/lib/treasury";
 import { money } from "@/lib/format";
 
 type Sub = { status: string; application: Application | null; application_hash: string | null; treasury_reference: string | null;
@@ -20,31 +20,22 @@ const STEPS = [
   { s: "funded", t: "Money sent" }, { s: "distributed", t: "In kids' accounts" },
 ];
 
-export function TreasuryPanel({ poolId, status, sub, defaults, messages, mock }: {
-  poolId: string; status: string; sub: Sub; messages: Msg[]; mock: boolean;
-  defaults: { amount_cents: number; recognition_name: string; rep_name: string; rep_email: string };
+export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholders }: {
+  poolId: string; status: string; sub: Sub; messages: Msg[]; mock: boolean; placeholders: string[];
 }) {
   const router = useRouter();
   const a = sub?.application;
-  const [f, setF] = useState<DonorInput>({
-    entity_name: a?.section1.entity_name ?? "", entity_address: a?.section1.entity_address ?? "", ein: a?.section1.ein ?? "",
-    entity_type: a?.section1.entity_type ?? "501c3",
-    rep_name: a?.section1.rep_name ?? defaults.rep_name, rep_title: a?.section1.rep_title ?? "", rep_address: a?.section1.rep_address ?? "",
-    rep_email: a?.section1.rep_email ?? defaults.rep_email, rep_phone: a?.section1.rep_phone ?? "",
-    amount_cents: a?.section2.amount_cents ?? defaults.amount_cents,
-    recognition: a?.section3.recognition ?? true, recognition_name: a?.section3.recognition_name ?? defaults.recognition_name,
-    signature: "", certify: false,
-  });
-  const [amount, setAmount] = useState(String((a?.section2.amount_cents ?? defaults.amount_cents) / 100));
+  const [rec, setRec] = useState(a?.section3.recognition ?? true);
+  const [recName, setRecName] = useState(a?.section3.recognition_name ?? "");
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
   const [pay, setPay] = useState({ method: "ach", reference: "", amount: String((sub?.amount_cents ?? 0) / 100) });
   const editable = status === "approved" || status === "rejected";
   const idx = status === "rejected" ? 0 : STEPS.findIndex((x) => x.s === status);
-  const set = (k: keyof DonorInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     setBusy(true); setMsg("");
     try { await fn(); if (ok) setMsg(ok); router.refresh(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
+  const s1 = a?.section1;
 
   return (
     <section className="panel noprint" id="treasury" style={{ maxWidth: 860, margin: "18px auto 0" }}>
@@ -54,45 +45,28 @@ export function TreasuryPanel({ poolId, status, sub, defaults, messages, mock }:
         {STEPS.map((x, i) => <li key={x.s} className={i < idx || status === "distributed" ? "done" : i === idx ? "now" : ""}>
           <span className="dot">{i < idx || status === "distributed" ? "✓" : i + 1}</span><div><b>{x.t}</b></div></li>)}
       </ol>
-      {status === "rejected" && <p className="notice"><b>Treasury didn&apos;t approve the application.</b> Check the message below, update the details and send it again.</p>}
-      <p className="hint">This is Treasury&apos;s <i>Trump Accounts Qualified Class Contribution Application</i> (draft of June 10, 2026). The <b>Qualified Donor</b> is the partner charity that receives your coalition&apos;s gifts and sends one contribution to Treasury, so its authorized representative should fill in and sign Sections 1 and 4. The draft form only lists nationwide, birth-year and state classes, and says ZIP-code areas need a separate request; your ZIP codes and kid counts go in Attachment A.</p>
+      {status === "rejected" && <p className="notice"><b>Treasury didn&apos;t approve the application.</b> Check the message below, adjust it and send it again. To change who&apos;s in the coalition, anyone can still leave, which draws up a new agreement for the others to sign.</p>}
+      <p className="hint">This is Treasury&apos;s <i>Trump Accounts Qualified Class Contribution Application</i> (draft of June 10, 2026), filled in from your signed agreement. <b>{s1?.entity_name ?? "Hometown Seed's nonprofit"}</b>, a 501(c)(3), is the Qualified Donor: it receives the coalition&apos;s gifts, applies, and sends one contribution. Everyone in the coalition is listed with their signature in Attachment B. The draft form only lists nationwide, birth-year and state classes and says ZIP-code areas need a separate request, so your ZIP codes and kid counts go in Attachment A.</p>
+      {placeholders.length > 0 && <p className="notice" style={{ marginTop: 10 }}><b>Nonprofit details still to fill in:</b> {placeholders.join(", ")}. Set them in <code>web/lib/platform.ts</code> (or the ORG_ variables in <code>.env.local</code>). Until then the PDF is marked as a draft{mock ? "" : " and can't be sent"}.</p>}
 
-      {editable && (
+      {a && (
+        <div className="appsum">
+          <div><span>Section 1 · Qualified Donor</span><b>{s1!.entity_name}</b><small>501(c)(3) · EIN {s1!.ein} · {s1!.entity_address}</small><small>Authorized representative: {s1!.rep_name}, {s1!.rep_title} · {s1!.rep_email}</small></div>
+          <div><span>Section 2 · Contribution</span><b>{money(a.section2.amount_cents)}</b><small>Qualified Geographic Area: {a.attachment_a.zip_codes.length} ZIP code{a.attachment_a.zip_codes.length === 1 ? "" : "s"}, about {a.attachment_a.est_beneficiaries_in_class.toLocaleString("en-US")} kids, ages {a.attachment_a.ages}</small></div>
+          <div><span>Section 4 · Signature</span><b>/s/ {a.section4.signature}</b><small>for the Qualified Donor, {a.section4.date}</small></div>
+          <div><span>Attachment B · Coalition</span><b>{a.attachment_b.people.length} {a.attachment_b.people.length === 1 ? "person" : "people"} signed</b><small>{a.attachment_b.people.map((p) => p.name).join(", ")}</small></div>
+        </div>
+      )}
+
+      {editable && a && (
         <div className="stack" style={{ marginTop: 14 }}>
-          <h3>Section 1: Qualified Donor</h3>
-          <div className="row">
-            <label className="field"><span>Organization name</span><input className="input" value={f.entity_name} onChange={set("entity_name")} /></label>
-            <label className="field"><span>EIN</span><input className="input" placeholder="12-3456789" value={f.ein} onChange={set("ein")} /></label>
-          </div>
-          <label className="field"><span>Organization address</span><input className="input" value={f.entity_address} onChange={set("entity_address")} /></label>
-          <label className="field"><span>Entity type</span>
-            <select className="input" value={f.entity_type} onChange={set("entity_type")}>
-              <option value="501c3">501(c)(3) tax-exempt organization</option><option value="state">State or District of Columbia</option>
-              <option value="subdivision">Political subdivision of a state (city, county)</option><option value="tribal">Indian tribal government</option>
-            </select></label>
-          <div className="row">
-            <label className="field"><span>Authorized representative</span><input className="input" value={f.rep_name} onChange={set("rep_name")} /></label>
-            <label className="field"><span>Title</span><input className="input" value={f.rep_title} onChange={set("rep_title")} /></label>
-          </div>
-          <label className="field"><span>Representative address</span><input className="input" value={f.rep_address} onChange={set("rep_address")} /></label>
-          <div className="row">
-            <label className="field"><span>Email</span><input className="input" type="email" value={f.rep_email} onChange={set("rep_email")} /></label>
-            <label className="field"><span>Phone</span><input className="input" value={f.rep_phone} onChange={set("rep_phone")} /></label>
-          </div>
-          <h3>Section 2: Contribution</h3>
-          <label className="field"><span>Proposed contribution amount <em>pledged so far: {money(defaults.amount_cents)}</em></span>
-            <div className="money"><input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></div></label>
           <h3>Section 3: Public recognition</h3>
-          <label className="check"><input type="checkbox" checked={f.recognition} onChange={(e) => setF({ ...f, recognition: e.target.checked })} /><span>Authorize Treasury to publicly recognize this contribution</span></label>
-          {f.recognition && <label className="field"><span>Recognition name</span><input className="input" value={f.recognition_name} onChange={set("recognition_name")} /></label>}
-          <h3>Section 4: Representations and signature</h3>
-          <p className="small muted">The representative confirms the information is accurate and complete, the organization is a Qualified Donor, sending this isn&apos;t acceptance by Treasury, and they&apos;ve reviewed the Qualified Class Contribution Agreement. They certify under penalties of perjury that they&apos;re authorized to sign.</p>
-          <label className="check"><input type="checkbox" checked={f.certify} onChange={(e) => setF({ ...f, certify: e.target.checked })} /><span>I am the authorized representative named above and I certify these representations.</span></label>
-          <label className="field"><span>Type your full name to sign</span><input className="input" value={f.signature} onChange={set("signature")} placeholder={f.rep_name} /></label>
+          <label className="check"><input type="checkbox" checked={rec} onChange={(e) => setRec(e.target.checked)} /><span>Authorize Treasury to publicly recognize this contribution</span></label>
+          {rec && <label className="field"><span>Recognition name</span><input className="input" value={recName} onChange={(e) => setRecName(e.target.value)} /></label>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-green btn-sm" disabled={busy} onClick={() => run(() => post(`/api/coalitions/${poolId}/application`, { ...f, amount_cents: Math.round((Number(amount.replace(/[^0-9.]/g, "")) || 0) * 100) }), "Application saved. Review the PDF, then send it.")}>Save application</button>
-            {a && <a className="btn btn-ghost btn-sm" href={`/api/coalitions/${poolId}/application/pdf`} target="_blank">Preview PDF</a>}
-            {a && status === "approved" && <button className="btn btn-green btn-sm" disabled={busy} onClick={() => run(() => post(`/api/coalitions/${poolId}/submit`, {}))}>{mock ? "Send to Treasury (mock)" : "Send to Treasury"}</button>}
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(() => post(`/api/coalitions/${poolId}/application`, { recognition: rec, recognition_name: recName }), "Saved.")}>Save</button>
+            <a className="btn btn-ghost btn-sm" href={`/api/coalitions/${poolId}/application/pdf`} target="_blank">Preview PDF</a>
+            <button className="btn btn-green btn-sm" disabled={busy} onClick={() => run(() => post(`/api/coalitions/${poolId}/submit`, {}))}>{mock ? "Send to Treasury (mock)" : "Send to Treasury"}</button>
           </div>
         </div>
       )}
@@ -107,7 +81,7 @@ export function TreasuryPanel({ poolId, status, sub, defaults, messages, mock }:
       {status === "accepted" && (
         <div className="stack" style={{ marginTop: 14 }}>
           <h3>Step 4: Send the money</h3>
-          <p className="hint">Treasury approved. The charity transfers the contribution electronically from a U.S. bank by ACH or wire, using the instructions Treasury provides, then records it here.</p>
+          <p className="hint">Treasury approved. Hometown Seed's nonprofit transfers the contribution electronically from a U.S. bank by ACH or wire, using the instructions Treasury provides, then records it here.</p>
           <div className="row r3">
             <label className="field"><span>Method</span><select className="input" value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}><option value="ach">ACH</option><option value="wire">Wire</option></select></label>
             <label className="field"><span>Trace or wire reference</span><input className="input" value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} /></label>
