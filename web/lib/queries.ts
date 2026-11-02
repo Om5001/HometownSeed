@@ -29,11 +29,11 @@ const campaignSelect = (sql: ReturnType<typeof db>) => sql`
          s.kids_in_class::float8 as kids, s.kids_u18::float8 as kids_u18, s.zip_count, s.meets_min, s.all_low_income,
          s.min_age, s.max_age, s.pool_id, s.created_at, s.is_demo, s.owner_id, s.invite_code,
          s.goal_per_child_cents::float8 as goal_pc, s.raised_per_child_cents::float8 as raised_pc, s.lat, s.lon,
-         u.display_name as owner_name,
+         coalesce(u.display_name, 'Former organizer') as owner_name,
          coalesce((select array_agg(p) from (
              select coalesce(z.place_name || ', ' || z.place_state, 'ZIP ' || z.zcta) as p, max(z.kids_u18) as k
              from zcta_stats z where z.zcta = any(s.zctas::char(5)[]) group by 1 order by k desc limit 4) t), '{}') as places
-  from v_campaign_stats s join app_users u on u.id = s.owner_id`;
+  from v_campaign_stats s left join app_users u on u.id = s.owner_id`;
 
 export async function listCampaigns(opts: { q?: string; zcta?: string; owner?: string; limit?: number } = {}) {
   const sql = db();

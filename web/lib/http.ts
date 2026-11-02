@@ -8,10 +8,23 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function requireUser(): Promise<User> {
+export async function requireUser(opts: { verified?: boolean } = {}): Promise<User> {
   const u = await getUser();
   if (!u) throw new HttpError(401, "Please sign in first.");
+  if (opts.verified && !u.email_verified) throw new HttpError(403, "Confirm your email first. Check your inbox for the link, or resend it from the banner at the top.");
   return u;
+}
+
+/** The site's public address, for links in emails. In production it must come from
+ *  NEXT_PUBLIC_SITE_URL, so a forged Host/Origin header can't redirect reset links. */
+export function siteUrl(req: Request): string {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (env) return env;
+  if (process.env.NODE_ENV === "production") throw new HttpError(500, "Set NEXT_PUBLIC_SITE_URL to the site's address.");
+  const origin = req.headers.get("origin");
+  if (origin && /^https?:\/\//.test(origin)) return origin;
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
+  return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
 }
 
 /** Wrap a route handler: turns HttpError into JSON errors and hides internals. */
@@ -24,6 +37,9 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     } catch (e) {
       if (e instanceof HttpError || e instanceof AuthError) return fail(e.message, e.status);
       console.error(e);
+      const code = (e as { code?: string }).code;
+      if (code === "42P01" || code === "42703" || code === "42883")
+        return fail("The database is missing the latest setup. Stop the site and run: npm run migrate", 500);
       return fail("Something went wrong. Please try again.", 500);
     }
   };
@@ -38,8 +54,8 @@ export const int = (v: unknown, lo: number, hi: number, dflt: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
 
-/** Blocks cross-site form posts (CSRF). Uses the browser's Sec-Fetch-Site label,
- *  which works behind proxies (Codespaces, Vercel) that rewrite the Host header. */
+/** Blocks cross-site form posts (CSRF). Browsers label every request with Sec-Fetch-Site;
+ *  that works behind proxies (Codespaces, Vercel) that rewrite the Host header. */
 function sameOrigin(req: Request) {
   const site = req.headers.get("sec-fetch-site");
   if (site) return site === "same-origin" || site === "none";

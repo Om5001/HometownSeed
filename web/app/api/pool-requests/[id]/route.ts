@@ -4,7 +4,7 @@ import { audit, memberRole } from "@/lib/queries";
 
 /** Accept, decline, or withdraw a pooling request. Accepting merges both campaigns into one pool. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireUser();
+  const user = await requireUser({ verified: true });
   const { id } = await ctx.params;
   const { action } = await req.json().catch(() => ({}));
   if (!["accept", "decline", "withdraw"].includes(action)) return fail("Unknown action.");

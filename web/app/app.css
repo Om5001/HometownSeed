@@ -94,3 +94,5 @@ a.btn{text-decoration:none}
 @media (max-width:760px){.nav button.navlink{display:none}}
 @media (max-width:520px){.nav .long{display:none}.nav .short{display:inline}}
 .deck{height:400px}
+.verify-banner{background:var(--gold-soft);border-bottom:1px solid var(--line);font-size:14px}
+.verify-banner .wrap{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding-block:10px}

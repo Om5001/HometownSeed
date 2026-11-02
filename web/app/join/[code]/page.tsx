@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function JoinPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const [c] = await db()<{ slug: string; name: string; owner: string }[]>`
-    select c.slug, c.name, u.display_name as owner from campaigns c join app_users u on u.id = c.owner_id
+    select c.slug, c.name, coalesce(u.display_name, 'An organizer') as owner from campaigns c left join app_users u on u.id = c.owner_id
     where c.invite_code = ${code} and c.status = 'active'`;
   if (!c) notFound();
   const user = await getUser();

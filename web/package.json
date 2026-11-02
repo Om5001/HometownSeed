@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/migrate.mjs",
     "dev": "next dev",
+    "migrate": "node scripts/migrate.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -13,6 +15,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "d3-geo": "^3.1.1",
     "d3-quadtree": "^3.0.1",
     "next": "^15.5.27",

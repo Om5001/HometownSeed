@@ -4,7 +4,7 @@ import { audit } from "@/lib/queries";
 
 /** Accept a friend invite: join the campaign as an organizer. */
 export const POST = handle(async (_req: Request, ctx: { params: Promise<{ code: string }> }) => {
-  const user = await requireUser();
+  const user = await requireUser({ verified: true });
   const { code } = await ctx.params;
   const sql = db();
   const [c] = await sql<{ id: string; slug: string }[]>`select id, slug from campaigns where invite_code = ${code} and status = 'active'`;

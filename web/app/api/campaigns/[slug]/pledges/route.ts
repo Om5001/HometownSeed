@@ -7,7 +7,7 @@ import { startPayment } from "@/lib/payments";
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ slug: string }> }) => {
   const { slug } = await ctx.params;
   const b = await req.json().catch(() => ({}));
-  const user = await requireUser();
+  const user = await requireUser({ verified: true });
   const amountCents = int(b.amountCents, 0, 100_000_000_00, 0);
   if (amountCents < 500) return fail("The minimum gift is $5.");
   const name = String(b.name || user.display_name || "").trim().slice(0, 80);

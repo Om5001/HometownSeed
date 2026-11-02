@@ -3,7 +3,7 @@ import { fail, handle, ok, requireUser } from "@/lib/http";
 
 /** Record a like/pass. A like on a person who already liked you = a match. */
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser();
+  const user = await requireUser({ verified: true });
   const { kind, id, decision } = await req.json().catch(() => ({}));
   if (!["campaign", "person"].includes(kind) || !["like", "pass"].includes(decision) || !/^[0-9a-f-]{36}$/.test(String(id)))
     return fail("Bad swipe.");

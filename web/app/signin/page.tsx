@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function Form() {
@@ -8,6 +9,16 @@ function Form() {
   const [mode, setMode] = useState<"in" | "up">(sp.get("mode") === "signup" ? "up" : "in");
   const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [pw, setPw] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState<{ devLink?: string } | null>(null);
+  const dest = next.startsWith("/") && !next.startsWith("//") ? next : mode === "up" ? "/profile?welcome=1" : "/match";
+  if (sent) return (
+    <div className="stack">
+      <div className="thanks"><div className="ring">✉</div><h3>Check your email</h3>
+        <p>We sent a confirmation link to <b>{email}</b>. Click it to unlock campaigns, pledges and matching. You can set up your profile meanwhile.</p></div>
+      {sent.devLink && <p className="notice"><b>Development mode:</b> no email service is set up yet, so here&apos;s the link: <a href={sent.devLink}>confirm my email</a></p>}
+      <button className="btn btn-green" onClick={() => { router.push(dest); router.refresh(); }}>Continue</button>
+    </div>
+  );
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(""); setBusy(true);
     try {
@@ -17,7 +28,7 @@ function Form() {
       });
       const d = await r.json();
       if (!r.ok) return setErr(d.error);
-      const dest = next.startsWith("/") && !next.startsWith("//") ? next : mode === "up" ? "/profile?welcome=1" : "/match";
+      if (mode === "up") { setSent(d.verification?.sent === false ? { devLink: d.verification.devLink } : {}); return; }
       router.push(dest); router.refresh();
     } finally { setBusy(false); }
   };
@@ -30,11 +41,12 @@ function Form() {
       <form className="stack" noValidate onSubmit={submit}>
         {mode === "up" && <label className="field"><span>Your name</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>}
         <label className="field"><span>Email</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
-        <label className="field"><span>Password {mode === "up" && <em>at least 8 characters</em>}</span>
+        <label className="field"><span>Password {mode === "up" && <em>at least 10 characters; a short phrase works well</em>}</span>
           <input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} /></label>
         {err && <p className="err" role="alert">{err}</p>}
         <button className="btn btn-green submit" disabled={busy}>{busy ? "One moment…" : mode === "in" ? "Sign in" : "Create account"}</button>
       </form>
+      {mode === "in" && <Link className="small" href="/forgot">Forgot your password?</Link>}
       {next && <p className="small muted">Sign in to start campaigns, pledge, and match with other givers.</p>}
     </>
   );

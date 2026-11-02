@@ -120,3 +120,25 @@ def test_child_estimate_survives_restricted_search_path(conn):
     conn.execute("set search_path = pg_catalog, pg_temp")
     conn.execute("refresh materialized view public.zcta_stats")
     conn.execute("reset search_path")
+
+
+def test_delete_account_keeps_money_records(conn):
+    a = mk(conn, "keep-me", U1, ["11234"], 100_000)
+    b = mk(conn, "drop-me", U1, ["11236"], 100_000)
+    conn.execute("insert into campaign_members values (%s,%s,'owner',now())", (a, U1))
+    conn.execute("insert into pledges (campaign_id, user_id, donor_name, amount_cents) values (%s,%s,'A',5000)", (a, U1))
+    conn.execute("insert into sessions values ('h', %s, now(), now() + interval '1 day', null)", (U1,))
+    conn.commit()
+    conn.execute("select delete_account(%s)", (U1,))
+    conn.commit()
+    assert rows(conn, "select count(*) n from app_users where id = %s", (U1,))[0]["n"] == 0
+    assert rows(conn, "select count(*) n from sessions")[0]["n"] == 0
+    assert rows(conn, "select status, owner_id from campaigns where id = %s", (a,))[0] == {"status": "closed", "owner_id": None}
+    assert rows(conn, "select count(*) n from campaigns where id = %s", (b,))[0]["n"] == 0
+    p = rows(conn, "select donor_name, user_id, amount_cents from pledges")[0]
+    assert p == {"donor_name": "Deleted account", "user_id": None, "amount_cents": 5000}
+
+
+def test_tables_have_row_level_security(conn):
+    off = rows(conn, "select tablename from pg_tables where schemaname = 'public' and not rowsecurity")
+    assert off == []

@@ -4,6 +4,7 @@ import "./legacy.css";
 import "./app.css";
 import { getUser } from "@/lib/auth";
 import { SignOutButton } from "@/components/SignOutButton";
+import { VerifyBanner } from "@/components/VerifyBanner";
 
 export const metadata: Metadata = {
   title: "Hometown Seed",
@@ -40,6 +41,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="navlink" href="/connections">Matches</Link>
                   <Link className="navlink" href="/me">My campaigns</Link>
                   <Link className="navlink" href="/profile">Profile</Link>
+                  <Link className="navlink" href="/account">Account</Link>
                   <SignOutButton />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
@@ -54,6 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </nav>
           </div>
         </header>
+        {user && !user.email_verified && <VerifyBanner email={user.email} />}
         {children}
         <footer>
           <div className="wrap">

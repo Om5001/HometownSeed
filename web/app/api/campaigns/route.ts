@@ -9,7 +9,7 @@ export const GET = handle(async (req: Request) => {
 });
 
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser();
+  const user = await requireUser({ verified: true });
   const b = await req.json().catch(() => ({}));
   const name = String(b.name || "").trim().slice(0, 80);
   const description = String(b.description || "").trim().slice(0, 500) || null;
