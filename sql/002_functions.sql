@@ -13,14 +13,14 @@ $$;
 create or replace function child_estimate(r acs_zcta_children, p_min_age int, p_max_age int)
 returns numeric language sql immutable as $$
     select
-          coalesce(r.age_0_2,   0) * _age_overlap(0,  2,  p_min_age, p_max_age) / 3
-        + coalesce(r.age_3_4,   0) * _age_overlap(3,  4,  p_min_age, p_max_age) / 2
-        + coalesce(r.age_5,     0) * _age_overlap(5,  5,  p_min_age, p_max_age) / 1
-        + coalesce(r.age_6_8,   0) * _age_overlap(6,  8,  p_min_age, p_max_age) / 3
-        + coalesce(r.age_9_11,  0) * _age_overlap(9,  11, p_min_age, p_max_age) / 3
-        + coalesce(r.age_12_14, 0) * _age_overlap(12, 14, p_min_age, p_max_age) / 3
-        + coalesce(r.age_15_17, 0) * _age_overlap(15, 17, p_min_age, p_max_age) / 3
-        + coalesce(r.group_quarters_u18, 0) * _age_overlap(0, 17, p_min_age, p_max_age) / 18
+          coalesce(r.age_0_2,   0) * public._age_overlap(0,  2,  p_min_age, p_max_age) / 3
+        + coalesce(r.age_3_4,   0) * public._age_overlap(3,  4,  p_min_age, p_max_age) / 2
+        + coalesce(r.age_5,     0) * public._age_overlap(5,  5,  p_min_age, p_max_age) / 1
+        + coalesce(r.age_6_8,   0) * public._age_overlap(6,  8,  p_min_age, p_max_age) / 3
+        + coalesce(r.age_9_11,  0) * public._age_overlap(9,  11, p_min_age, p_max_age) / 3
+        + coalesce(r.age_12_14, 0) * public._age_overlap(12, 14, p_min_age, p_max_age) / 3
+        + coalesce(r.age_15_17, 0) * public._age_overlap(15, 17, p_min_age, p_max_age) / 3
+        + coalesce(r.group_quarters_u18, 0) * public._age_overlap(0, 17, p_min_age, p_max_age) / 18
 $$;
 
 -- Share of under-18s who are U.S. citizens (Trump Accounts require an SSN-holding
