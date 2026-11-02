@@ -38,10 +38,13 @@ export const int = (v: unknown, lo: number, hi: number, dflt: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
 
-/** Blocks cross-site form posts (CSRF): a browser always sends Origin on cross-site POSTs. */
+/** Blocks cross-site form posts (CSRF). Uses the browser's Sec-Fetch-Site label,
+ *  which works behind proxies (Codespaces, Vercel) that rewrite the Host header. */
 function sameOrigin(req: Request) {
+  const site = req.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin" || site === "none";
   const origin = req.headers.get("origin");
   if (!origin) return true;
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-  try { return new URL(origin).host === host; } catch { return false; }
+  const hosts = [req.headers.get("x-forwarded-host"), req.headers.get("host")].filter(Boolean);
+  try { return hosts.includes(new URL(origin).host); } catch { return false; }
 }
