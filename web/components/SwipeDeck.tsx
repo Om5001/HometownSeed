@@ -43,7 +43,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName) || (e.target as HTMLElement)?.isContentEditable) return;
       if (e.key === "ArrowRight") decide(true);
       if (e.key === "ArrowLeft") decide(false);
     };

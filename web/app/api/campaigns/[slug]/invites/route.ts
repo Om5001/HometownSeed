@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
-import { fail, handle, HttpError, ok, requireUser } from "@/lib/http";
+import { fail, handle, HttpError, ok, requireUser, readJson } from "@/lib/http";
 import { memberRole } from "@/lib/queries";
 
 /** Organizers get the invite link; optional emails are recorded for a later email integration. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ slug: string }> }) => {
   const user = await requireUser({ verified: true });
   const { slug } = await ctx.params;
-  const b = await req.json().catch(() => ({}));
+  const b = await readJson(req);
   const sql = db();
   const [c] = await sql<{ id: string; invite_code: string }[]>`select id, invite_code from campaigns where slug = ${slug}`;
   if (!c) return fail("Campaign not found.", 404);

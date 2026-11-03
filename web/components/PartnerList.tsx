@@ -47,7 +47,7 @@ export function PartnerList({ initial, mine }: { initial: DeckCard[]; mine: { sl
         </div>
       </div>
 
-      {view === "quick" ? <SwipeDeck initial={shown} /> : shown.length === 0 ? (
+      {view === "quick" ? <SwipeDeck key={filter} initial={shown} /> : shown.length === 0 ? (
         <p className="empty">Nothing here yet. Widen your distance or add places on your <Link href="/account#giving">profile</Link>, or check back as more people join.</p>
       ) : (
         <div className="plist">{shown.map((c) => {

@@ -10,7 +10,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:api": "node --test tests/api.test.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "test:fuzz": "node tests/fuzz.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 import { money, perChild } from "@/lib/format";
 
 async function post(url: string, body: unknown) {
@@ -28,26 +29,27 @@ export function PledgeForm({ slug, kids, where, user, paused }: { slug: string; 
 }
 
 function PledgeFormInner({ slug, kids, where, user }: { slug: string; kids: number; where: string; user: { display_name: string; email: string } }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [amt, setAmt] = useState(100); const [custom, setCustom] = useState("");
   const [name, setName] = useState(user.display_name); const [email, setEmail] = useState(user.email);
   const [anon, setAnon] = useState(false); const [msg, setMsg] = useState(""); const [fees, setFees] = useState(true);
   const [err, setErr] = useState(""); const [done, setDone] = useState<number | null>(null); const [busy, setBusy] = useState(false);
+  const sending = useRef(false);   // blocks a fast double-click from pledging twice
   const dollars = custom ? Number(custom.replace(/[^0-9.]/g, "")) || 0 : amt;
   const cents = Math.round(dollars * 100);
   if (done !== null) return (
     <div className="thanks">
       <div className="ring">✓</div><h3>Thank you{anon ? "" : ", " + name.split(" ")[0]}!</h3>
       <p>Your {money(done)} pledge is recorded. That&apos;s about {perChild(done / Math.max(kids, 1))} for each of {kids.toLocaleString()} kids in {where}.</p>
-      <p className="notice"><b>Prototype:</b> no money was charged. Real payments will run through the partner charity.</p>
+      <p className="notice"><b>Prototype:</b> no money was charged. Real payments will go to the coalition&apos;s 501(c)(3), which sends them to Treasury.</p>
       <button className="btn btn-ghost" onClick={() => setDone(null)}>Make another pledge</button>
     </div>
   );
   return (
     <form className="stack" noValidate onSubmit={async (e) => {
-      e.preventDefault(); setErr(""); setBusy(true);
-      try { await post(`/api/campaigns/${slug}/pledges`, { amountCents: cents, name, email, anonymous: anon, message: msg, coverFees: fees }); setDone(cents); router.refresh(); }
-      catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+      e.preventDefault(); if (sending.current) return; sending.current = true; setErr(""); setBusy(true);
+      try { await post(`/api/campaigns/${slug}/pledges`, { amountCents: cents, name, email, anonymous: anon, message: msg, coverFees: fees }); setDone(cents); refresh(false); }
+      catch (x) { setErr((x as Error).message); } finally { setBusy(false); sending.current = false; }
     }}>
       <div className="subhead"><h3><span className="n">$</span>Pledge to this campaign</h3></div>
       <div className="amts" role="group" aria-label="Gift amount">
@@ -72,7 +74,7 @@ function PledgeFormInner({ slug, kids, where, user }: { slug: string; kids: numb
 }
 
 export function PoolButton({ fromSlug, toSlug, disabled, pending }: { fromSlug: string; toSlug: string; disabled?: string; pending?: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [state, setState] = useState<"idle" | "busy" | "sent" | string>(pending ? "sent" : "idle");
   if (disabled) return <span className="small muted">{disabled}</span>;
   if (state === "sent") return <span className="tag g">Pool request sent</span>;
@@ -80,7 +82,7 @@ export function PoolButton({ fromSlug, toSlug, disabled, pending }: { fromSlug: 
     <>
       <button className="btn btn-green btn-sm" disabled={state === "busy"} onClick={async () => {
         setState("busy");
-        try { await post(`/api/campaigns/${fromSlug}/pool-requests`, { toSlug }); setState("sent"); router.refresh(); }
+        try { await post(`/api/campaigns/${fromSlug}/pool-requests`, { toSlug }); setState("sent"); refresh(); }
         catch (x) { setState((x as Error).message); }
       }}>Request to pool</button>
       {state !== "idle" && state !== "busy" && <span className="err">{state}</span>}
@@ -89,9 +91,9 @@ export function PoolButton({ fromSlug, toSlug, disabled, pending }: { fromSlug: 
 }
 
 export function RequestButtons({ id, mine }: { id: string; mine?: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [err, setErr] = useState("");
-  const act = async (action: string) => { try { await post(`/api/pool-requests/${id}`, { action }); router.refresh(); } catch (x) { setErr((x as Error).message); } };
+  const act = async (action: string) => { try { await post(`/api/pool-requests/${id}`, { action }); refresh(); } catch (x) { setErr((x as Error).message); } };
   return (
     <div className="acts">
       {mine ? <button className="btn btn-ghost btn-sm" onClick={() => act("withdraw")}>Withdraw</button> : (
@@ -131,21 +133,21 @@ export function ShareButton({ path }: { path: string }) {
 }
 
 export function ConfirmCoalitionButton({ slug }: { slug: string }) {
-  const router = useRouter(); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const router = useRouter(); const refresh = useRefresh(); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   return (<>
     <button className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={async () => {
       setBusy(true); setErr("");
-      try { await post(`/api/campaigns/${slug}/coalition`, {}); router.refresh(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+      try { await post(`/api/campaigns/${slug}/coalition`, {}); refresh(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
     }}>{busy ? "Confirming…" : "We're ready: form the coalition"}</button>
     {err && <p className="err">{err}</p>}
   </>);
 }
 
 export function CampaignSettings({ slug, matching, friends }: { slug: string; matching: boolean; friends: boolean }) {
-  const router = useRouter(); const [m, setM] = useState(matching); const [f, setF] = useState(friends); const [msg, setMsg] = useState("");
+  const router = useRouter(); const refresh = useRefresh(); const [m, setM] = useState(matching); const [f, setF] = useState(friends); const [msg, setMsg] = useState("");
   const save = async (nm: boolean, nf: boolean) => {
     setM(nm); setF(nf);
-    try { await post(`/api/campaigns/${slug}/settings`, { open_to_matching: nm, invite_friends: nf }); setMsg("Saved."); router.refresh(); }
+    try { await post(`/api/campaigns/${slug}/settings`, { open_to_matching: nm, invite_friends: nf }); setMsg("Saved."); refresh(); }
     catch (x) { setMsg((x as Error).message); }
   };
   return (
@@ -159,13 +161,13 @@ export function CampaignSettings({ slug, matching, friends }: { slug: string; ma
 
 /** Organizers can take the campaign out of its coalition; the owner can delete it. Both only before it goes to Treasury. */
 export function CampaignDanger({ slug, name, inCoalition, isOwner, locked, pledges }: { slug: string; name: string; inCoalition: boolean; isOwner: boolean; locked: boolean; pledges: number }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [mode, setMode] = useState<"" | "leave" | "delete">(""); const [ok, setOk] = useState(false); const [typed, setTyped] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   if (locked) return <p className="small muted">This campaign&apos;s coalition has gone to Treasury, so it can&apos;t leave or be deleted.</p>;
   const go = async (url: string, body: object, to: string) => {
     setBusy(true); setErr("");
-    try { await post(url, body); router.push(to); router.refresh(); } catch (x) { setErr((x as Error).message); setBusy(false); }
+    try { await post(url, body); router.push(to); refresh(); } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
   return (
     <div className="stack" style={{ gap: 10 }}>

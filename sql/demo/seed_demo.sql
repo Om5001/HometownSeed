@@ -178,25 +178,29 @@ insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, sta
  ('hamm', 'Harold Hamm', 'Not stated', null, 'cash', 'employees', null, null, null, null,
   'Children of Continental Resources employees.',
   '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 80, null, false, null),
- ('employers', 'Employers (Bank of America, BlackRock, BNY, Charles Schwab, Dell, IBM, Intel, JPMorgan Chase, Nvidia, Visa, Wells Fargo and others)',
+ ('employers', 'Employers: Bank of America, BlackRock, BNY, Charles Schwab, Dell Technologies, IBM, Intel, JPMorgan Chase, Nvidia, Visa, Wells Fargo and others',
   'Matching contributions', null, 'cash', 'employees', null, null, null, null,
   'Employees'' children, typically matching the government''s $1,000 seed.',
-  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 90, null, false, null)
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 90, null, false, null),
+ ('turning_point', 'Turning Point USA', 'Dollar-for-dollar match of the $1,000 seed', null, 'cash', 'employees', null, 0, 0, null,
+  'Every eligible employee''s newborn baby.',
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 85, null, false, null),
+ ('micron', 'Micron Technology', '$250 million', null, 'cash', 'other', null, null, null, null,
+  'Corporate commitment; recipients not specified in the report.',
+  '2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 88, null, false, null)
 on conflict (id) do update set donor = excluded.donor, amount = excluded.amount, per_child = excluded.per_child, form = excluded.form,
   scope = excluded.scope, state = excluded.state, min_age = excluded.min_age, max_age = excluded.max_age, income_max = excluded.income_max,
   who = excluded.who, announced = excluded.announced, source_name = excluded.source_name, source_url = excluded.source_url, sort = excluded.sort,
   per_child_cents = excluded.per_child_cents, map_layer = excluded.map_layer, map_note = excluded.map_note;
-update demo_notable_pledges set donor_type = case id
-  when 'dell' then 'foundation' when 'dalio' then 'foundation' when 'freedman' then 'foundation' when 'gerstner' then 'foundation'
-  when 'bisignano' then 'foundation' when 'anand' then 'foundation' when 'sf_anon' then 'person'
-  when 'musk' then 'person' when 'shotwell' then 'person' when 'minaj' then 'person'
-  when 'hamm' then 'company' when 'employers' then 'company' else donor_type end;
+-- 'person' = a named individual or family (even when the money goes through their own foundation or fund);
+-- 'organization' = companies and institutions.
+update demo_notable_pledges set donor_type = case when id in ('employers', 'turning_point', 'micron') then 'organization' else 'person' end;
 update demo_notable_pledges set zips = '{11234}' where id = 'bisignano';
+update demo_notable_pledges set via = null where id in ('musk', 'shotwell');
 update demo_notable_pledges set via = case id
   when 'dell' then 'Michael & Susan Dell Foundation' when 'dalio' then 'Dalio Philanthropies'
   when 'gerstner' then 'Brad Gerstner Family Foundation (with Invest America)' when 'freedman' then 'Stable Road Foundation'
   when 'bisignano' then 'The Bisignano Family Fund' when 'anand' then 'Anand Legacy Foundation'
-  when 'shotwell' then 'personal SpaceX shares, with her husband' when 'musk' then 'personal SpaceX shares'
   when 'hamm' then 'Continental Resources' else via end;
 update demo_notable_pledges set est_children = 2000000, map_income_max = 75000,
   weight_prefixes = '{765,766,767,768,786,787}', weight_factor = 2 where id = 'shotwell';

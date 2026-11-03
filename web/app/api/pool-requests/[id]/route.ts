@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
-import { fail, handle, HttpError, ok, requireUser } from "@/lib/http";
+import { fail, handle, HttpError, ok, requireUser, readJson } from "@/lib/http";
 import { audit, memberRole } from "@/lib/queries";
 
 /** Accept, decline, or withdraw a pooling request. Accepting merges both campaigns into one pool. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const user = await requireUser({ verified: true });
   const { id } = await ctx.params;
-  const { action } = await req.json().catch(() => ({}));
+  const { action } = await readJson(req);
   if (!["accept", "decline", "withdraw"].includes(action)) return fail("Unknown action.");
   const sql = db();
   const [r] = await sql<{ id: string; from_campaign: string; to_campaign: string; status: string }[]>`

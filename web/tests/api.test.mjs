@@ -71,7 +71,7 @@ test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async 
   assert.equal(pl.data.payment.kind, "pledge_only");
   assert.equal((await ben(`/api/campaigns/${a.data.slug}/pledges`, { amountCents: 100 })).status, 400);
 
-  const m = await ana(`/api/campaigns/${a.data.slug}/matches`);
+  const m = await ana(`/api/campaigns/${a.data.slug}/matches?limit=50`);   // other test runs may share the database
   const hit = m.data.find((x) => x.slug === b.data.slug);
   assert.ok(hit, "Canarsie should match Marine");
   assert.equal(hit.match_type, "same_area");
@@ -101,8 +101,8 @@ test("campaign lifecycle: create, pledge, match, pool, invite", { skip }, async 
 
 test("profiles, swipe deck, mutual match, start together", { skip }, async () => {
   const dee = client(), eli = client(), anon = client();
-  await signup(dee, "Dee");
-  await signup(eli, "Eli");
+  const deeId = (await signup(dee, "Dee")).user.id;
+  const eliId = (await signup(eli, "Eli")).user.id;
 
   assert.equal((await anon("/api/deck")).status, 401);
   assert.equal((await dee("/api/profile", { home_zip: "11234", target_zips: ["11234"], gift_types: [] })).status, 400);
@@ -111,19 +111,19 @@ test("profiles, swipe deck, mutual match, start together", { skip }, async () =>
   const prof = await dee("/api/profile");
   assert.deepEqual(prof.data.profile.target_zips, ["11234", "11236"]);
 
-  const deck = await dee("/api/deck");
+  const deck = await dee("/api/deck?limit=100");
   assert.equal(deck.status, 200);
-  const eliCard = deck.data.find((c) => c.kind === "person" && c.title === "Eli");
+  const eliCard = deck.data.find((c) => c.kind === "person" && c.id === eliId);
   assert.ok(eliCard, "Eli should be in Dee's deck");
   const camp = deck.data.find((c) => c.kind === "campaign");
   assert.ok(camp && camp.score >= deck.data.at(-1).score, "deck is sorted by score");
   for (let i = 1; i < deck.data.length; i++) assert.ok(deck.data[i - 1].score >= deck.data[i].score);
 
   assert.equal((await dee("/api/swipes", { kind: "person", id: eliCard.id, decision: "like" })).data.matched, false);
-  const eliDeck = await eli("/api/deck");
-  const deeCard = eliDeck.data.find((c) => c.kind === "person" && c.title === "Dee");
+  const eliDeck = await eli("/api/deck?limit=100");
+  const deeCard = eliDeck.data.find((c) => c.kind === "person" && c.id === deeId);
   assert.equal((await eli("/api/swipes", { kind: "person", id: deeCard.id, decision: "like" })).data.matched, true);
-  assert.ok(!(await dee("/api/deck")).data.some((c) => c.id === eliCard.id), "swiped cards leave the deck");
+  assert.ok(!(await dee("/api/deck?limit=100")).data.some((c) => c.id === eliCard.id), "swiped cards leave the deck");
 
   await dee("/api/swipes", { kind: "campaign", id: camp.id, decision: "like" });
   const page = await dee("/connections");
@@ -408,7 +408,7 @@ test("demo account (temporary)", { skip }, async () => {
   const pm = await d("/api/demo/pledge-map");
   assert.ok(pm.data.pledges.some((p) => p.id === "dell"), "pledge map layer has Dell");
   assert.match(pm.data.rows, /12501,/);
-  assert.equal(pm.data.pledges.find((p) => p.id === "dell").donor_type, "foundation");
+  assert.equal(pm.data.pledges.find((p) => p.id === "dell").donor_type, "person", "named people are people, even when giving through their foundation");
   assert.match((await d("/nonprofits")).data, /Wassaic Project/);
   assert.match((await d("/zip/12545")).data, /Cary Institute of Ecosystem Studies/);
   const inbox = (await d("/api/messages")).data;

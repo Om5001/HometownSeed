@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 
 const BG = { "x-hs-background": "1" };   // polling: don't show the busy cursor
 const time = (iso: string) => {
@@ -14,7 +15,7 @@ const time = (iso: string) => {
 /** "Message" button that opens a small composer, sends, and opens the conversation. */
 export function MessageButton({ to, campaign, name, label = "Message", signedIn = true, className = "btn btn-ghost btn-sm" }:
   { to?: string; campaign?: string; name: string; label?: string; signedIn?: boolean; className?: string }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [open, setOpen] = useState(false); const [body, setBody] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   if (!signedIn) return <Link className={className} href={`/signin?next=${encodeURIComponent(typeof window === "undefined" ? "/" : location.pathname)}`}>{label}</Link>;
   if (!open) return <button type="button" className={className} onClick={() => setOpen(true)}>{label}</button>;
@@ -42,7 +43,7 @@ type Msg = { id: number; sender_name: string; body: string; created_at: string; 
 
 /** A conversation: messages plus a reply box. Checks for new messages every few seconds. */
 export function Thread({ id, initial, group, otherId, blocked: blocked0 }: { id: string; initial: Msg[]; group: boolean; otherId: string | null; blocked: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [msgs, setMsgs] = useState(initial); const [body, setBody] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const [blocked, setBlocked] = useState(blocked0);
   const end = useRef<HTMLDivElement>(null);
@@ -64,7 +65,7 @@ export function Thread({ id, initial, group, otherId, blocked: blocked0 }: { id:
     const d = await r.json().catch(() => ({}));
     setBusy(false);
     if (!r.ok) return setErr(d.error || "Couldn't send.");
-    setBody(""); await poll(); router.refresh();
+    setBody(""); await poll(); refresh();
   };
 
   return (
@@ -118,7 +119,7 @@ export function UnreadBadge({ initial }: { initial: number }) {
 
 /** Opens (creating if needed) the coalition's group chat. */
 export function CoalitionChatButton({ poolId }: { poolId: string }) {
-  const router = useRouter(); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const router = useRouter(); const refresh = useRefresh(); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   return (<>
     <button className="btn btn-ghost btn-sm" disabled={busy} onClick={async () => {
       setBusy(true);

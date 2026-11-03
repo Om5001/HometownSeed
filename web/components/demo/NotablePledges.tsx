@@ -3,25 +3,24 @@ import { useState } from "react";
 import type { NotablePledge } from "@/lib/demo";
 
 type P = NotablePledge & { incomeOk?: boolean | null };
-const TYPES = { person: "Personal gifts", foundation: "Through a foundation", company: "Companies" } as const;
-const SCOPES = { national: "Nationwide", state: "One state", local: "City, county or ZIP", employees: "Employees", other: "Other" } as const;
-const scopeGroup = (s: string) => (["zip", "city", "county"].includes(s) ? "local" : s);
-
-/** Lets people narrow a pledge list by name/foundation text, donor type and reach. */
-export function usePledgeFilter<T extends { donor: string; who?: string | null; via?: string | null; donor_type: string | null; scope: string }>(all: T[]) {
-  const [q, setQ] = useState(""); const [type, setType] = useState<string>(""); const [scope, setScope] = useState<string>("");
+/** Search by name (or the foundation a gift goes through) and choose people or organizations. */
+export function usePledgeFilter<T extends { donor: string; who?: string | null; via?: string | null; donor_type: string | null }>(all: T[]) {
+  const [q, setQ] = useState(""); const [type, setType] = useState<string>("");
   const t = q.trim().toLowerCase();
-  const shown = all.filter((p) => (!t || p.donor.toLowerCase().includes(t) || (p.via ?? "").toLowerCase().includes(t) || (p.who ?? "").toLowerCase().includes(t))
-    && (!type || p.donor_type === type) && (!scope || scopeGroup(p.scope) === scope));
-  return { q, setQ, type, setType, scope, setScope, shown };
+  const shown = all.filter((p) => (!t || p.donor.toLowerCase().includes(t) || (p.via ?? "").toLowerCase().includes(t))
+    && (!type || p.donor_type === type));
+  return { q, setQ, type, setType, shown };
 }
 
-export function PledgeFilters({ f, types = true, scopes = true }: { f: ReturnType<typeof usePledgeFilter>; types?: boolean; scopes?: boolean }) {
+export function PledgeFilters({ f, counts }: { f: ReturnType<typeof usePledgeFilter>; counts?: { person: number; organization: number } }) {
   return (
-    <div className="pfilters" style={{ alignItems: "center" }}>
-      <input className="input" style={{ width: 220, padding: "7px 10px" }} placeholder="Search names or foundations" value={f.q} onChange={(e) => f.setQ(e.target.value)} aria-label="Search pledges by name or foundation" />
-      {types && Object.entries(TYPES).map(([k, v]) => <button key={k} type="button" aria-pressed={f.type === k} onClick={() => f.setType(f.type === k ? "" : k)}>{v}</button>)}
-      {scopes && Object.entries(SCOPES).map(([k, v]) => <button key={k} type="button" aria-pressed={f.scope === k} onClick={() => f.setScope(f.scope === k ? "" : k)}>{v}</button>)}
+    <div className="pledge-filters">
+      <input className="input" type="search" placeholder="Search a name, e.g. Dell" value={f.q} onChange={(e) => f.setQ(e.target.value)} aria-label="Search donors by name" />
+      <div className="seg sm" role="group" aria-label="Show">
+        {[["", "Everyone"], ["person", "People"], ["organization", "Organizations"]].map(([k, l]) => (
+          <button key={k || "all"} type="button" aria-pressed={f.type === k} onClick={() => f.setType(k)}>
+            {l}{counts && k ? <span className="muted"> {counts[k as "person" | "organization"]}</span> : null}</button>))}
+      </div>
     </div>
   );
 }
@@ -37,7 +36,8 @@ export function NotablePledges({ pledges, zip, income }: { pledges: P[]; zip?: s
         <h2 style={{ marginTop: 4 }}>{zip ? "Already pledged here" : "Big pledges to Trump Accounts"}</h2></div>
         <span className="tag o">Demo data · as reported, Oct 2026</span></div>
       <p className="hint">Publicly announced pledges, separate from Hometown Seed. They add to anything raised here. Eligibility is set by each donor; check the source.</p>
-      {pledges.length > 3 && <PledgeFilters f={f as ReturnType<typeof usePledgeFilter>} scopes={!zip} />}
+      {pledges.length > 3 && <PledgeFilters f={f as ReturnType<typeof usePledgeFilter>}
+        counts={{ person: pledges.filter((p) => p.donor_type === "person").length, organization: pledges.filter((p) => p.donor_type === "organization").length }} />}
       <div className="np-hits">{f.shown.length ? f.shown.map((p) => (
         <div className="np-hit" key={p.id}>
           <div>

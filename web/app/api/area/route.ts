@@ -1,9 +1,9 @@
-import { cleanZips, handle, int, ok } from "@/lib/http";
+import { cleanZips, handle, int, ok, readJson } from "@/lib/http";
 import { areaStats, getRules, suggestNearby, zipDetails } from "@/lib/queries";
 
 /** Live numbers for the campaign builder: kids, 5,000 test, nearby ZIPs to add. */
 export const POST = handle(async (req: Request) => {
-  const body = await req.json().catch(() => ({}));
+  const body = await readJson(req);
   const zips = cleanZips(body.zips);
   const minAge = int(body.minAge, 0, 17, 0), maxAge = int(body.maxAge, minAge, 17, 17);
   const [rules, area, details, nearby] = await Promise.all([

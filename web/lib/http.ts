@@ -38,12 +38,26 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       if (e instanceof HttpError || e instanceof AuthError) return fail(e.message, e.status);
       console.error(e);
       const code = (e as { code?: string }).code;
+      // bad ids or numbers in the URL/body (e.g. "not-a-uuid"): the thing doesn't exist
+      if (code === "22P02" || code === "22003" || code === "22007") return fail("Not found, or the request had an invalid value.", 404);
+      if (code === "P0001") return fail((e as Error).message, 400);   // a rule raised by the database
+      if (code === "23503") return fail("That person or item doesn't exist (anymore).", 404);
+      if (code === "23505") return fail("That already exists.", 409);
+      if (e instanceof SyntaxError) return fail("The request body isn't valid JSON.", 400);
       if (code === "42P01" || code === "42703" || code === "42883")
         return fail("The database is missing the latest setup. Stop the site and run: npm run migrate", 500);
       if (process.env.NODE_ENV !== "production") return fail("Server error: " + ((e as Error).message || String(e)), 500);
       return fail("Something went wrong. Please try again.", 500);
     }
   };
+}
+
+/** The request's JSON body as a plain object ({} if it's missing, invalid, null or an array). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function readJson(req: Request): Promise<Record<string, any>> {
+  const b = await req.json().catch(() => null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, any>) : {};
 }
 
 export const ZIP_RE = /^\d{5}$/;

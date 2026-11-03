@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { cleanZips, fail, handle, int, ok, requireUser } from "@/lib/http";
+import { cleanZips, fail, handle, int, ok, requireUser, readJson } from "@/lib/http";
 import { slugify } from "@/lib/format";
 import { areaStats, audit, listCampaigns } from "@/lib/queries";
 
@@ -10,7 +10,7 @@ export const GET = handle(async (req: Request) => {
 
 export const POST = handle(async (req: Request) => {
   const user = await requireUser({ verified: true });
-  const b = await req.json().catch(() => ({}));
+  const b = await readJson(req);
   const name = String(b.name || "").trim().slice(0, 80);
   const description = String(b.description || "").trim().slice(0, 500) || null;
   const zips = cleanZips(b.zips);

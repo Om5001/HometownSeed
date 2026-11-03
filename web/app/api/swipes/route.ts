@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
-import { fail, handle, ok, requireUser } from "@/lib/http";
+import { fail, handle, ok, requireUser, readJson } from "@/lib/http";
 
 /** Record a like/pass. A like on a person who already liked you = a match. */
 export const POST = handle(async (req: Request) => {
   const user = await requireUser({ verified: true });
-  const { kind, id, decision } = await req.json().catch(() => ({}));
+  const { kind, id, decision } = await readJson(req);
   if (!["campaign", "person"].includes(kind) || !["like", "pass"].includes(decision) || !/^[0-9a-f-]{36}$/.test(String(id)))
     return fail("Bad swipe.");
   if (kind === "person" && id === user.id) return fail("That's you.");
@@ -22,7 +22,7 @@ export const POST = handle(async (req: Request) => {
 /** Undo: forget a swipe so the card comes back. */
 export const DELETE = handle(async (req: Request) => {
   const user = await requireUser();
-  const { kind, id } = await req.json().catch(() => ({}));
+  const { kind, id } = await readJson(req);
   await db()`delete from swipes where user_id = ${user.id} and target_kind = ${String(kind)} and target_id = ${String(id)}::uuid`;
   return ok({ ok: true });
 });

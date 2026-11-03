@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 import { ZipSearch } from "./ZipSearch";
 import type { GivingProfile, ZipRow } from "@/lib/queries";
 import { fmt, money, perChild as perChildFmt, placeLabel } from "@/lib/format";
@@ -16,7 +17,7 @@ const GIFTS = [
 ];
 
 export function ProfileForm({ initial, zips, incomeLine, welcome }: { initial: GivingProfile | null; zips: ZipRow[]; incomeLine: number; welcome: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const byZ = new Map(zips.map((z) => [z.zcta, z]));
   const [home, setHome] = useState<ZipRow | null>(initial?.home_zip ? byZ.get(initial.home_zip) ?? null : null);
   const [targets, setTargets] = useState<ZipRow[]>((initial?.target_zips ?? []).map((z) => byZ.get(z)).filter(Boolean) as ZipRow[]);
@@ -47,7 +48,7 @@ export function ProfileForm({ initial, zips, incomeLine, welcome }: { initial: G
       const d = await r.json();
       if (!r.ok) return setErr(d.error);
       setSaved(true);
-      if (welcome) router.push("/match"); else router.refresh();
+      if (welcome) router.push("/match"); else refresh();
     } finally { setBusy(false); }
   };
 

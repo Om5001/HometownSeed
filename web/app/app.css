@@ -252,3 +252,8 @@ h1, h2, h3, b, p, small, td, th, li, .tag, .np-badge, .pill { overflow-wrap: any
 .zoomhint { position: absolute; inset: auto 0 12px 0; margin: auto; width: fit-content; max-width: 90%; background: rgba(13,26,48,.85); color: #fff; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; pointer-events: none; z-index: 3; text-align: center; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
 .mapstage .tip { white-space: normal; max-width: 280px; width: max-content; }
+.donor-pick, .pledge-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.donor-pick .input, .pledge-filters .input { width: auto; padding: 7px 10px; }
+.donor-pick input, .pledge-filters input { flex: 1 1 200px; min-width: 0; max-width: 280px; }
+.donor-pick select { flex: 0 1 240px; min-width: 0; }
+.pledge-filters { margin: 8px 0 4px; }

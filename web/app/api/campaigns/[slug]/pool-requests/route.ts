@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
-import { fail, handle, HttpError, ok, requireUser } from "@/lib/http";
+import { fail, handle, HttpError, ok, requireUser, readJson } from "@/lib/http";
 import { audit, memberRole } from "@/lib/queries";
 
 /** Ask another campaign to pool into one Treasury contribution. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ slug: string }> }) => {
   const user = await requireUser({ verified: true });
   const { slug } = await ctx.params;
-  const b = await req.json().catch(() => ({}));
+  const b = await readJson(req);
   const sql = db();
   const rows = await sql<{ id: string; slug: string; min_age: number; max_age: number; pool_id: string | null; status: string; open_to_matching: boolean }[]>`
     select id, slug, min_age, max_age, pool_id, status, open_to_matching from campaigns where slug in (${slug}, ${String(b.toSlug || "")})`;

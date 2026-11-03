@@ -7,7 +7,7 @@ import { db } from "./db";
 export type NotablePledge = {
   id: string; donor: string; amount: string; per_child: string | null; form: string; scope: string; state: string | null;
   min_age: number | null; max_age: number | null; income_max: number | null; who: string; announced: string | null; source_name: string; source_url: string;
-  donor_type: "person" | "foundation" | "company" | null; zips: string[] | null; zip_prefixes: string[] | null; via: string | null;
+  donor_type: "person" | "organization" | null; zips: string[] | null; zip_prefixes: string[] | null; via: string | null;
 };
 
 export async function notablePledges(): Promise<NotablePledge[]> {

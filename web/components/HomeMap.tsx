@@ -18,9 +18,8 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
   const router = useRouter();
   const base = useRef<HTMLCanvasElement>(null), ov = useRef<HTMLCanvasElement>(null);
   const [layer, setLayer] = useState<Layer>("campaigns");
-  const [picked, setPicked] = useState<string[]>([]);     // chosen pledge ids; none = all
-  const [q, setQ] = useState("");                          // search names or foundations
-  const [dtype, setDtype] = useState("");                  // person | foundation | company
+  const [picked, setPicked] = useState("");                 // one donor's pledge id, or "" for everyone
+  const [q, setQ] = useState("");                          // search by name
   const [pm, setPm] = useState<PledgeMap | null>(null);
   const [hover, setHover] = useState<(Pt & { c?: Cover }) | null>(null);
   const [err, setErr] = useState("");
@@ -42,9 +41,9 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
 
   const matches = useCallback((p: PledgeMap["pledges"][number]) => {
     const t = q.trim().toLowerCase();
-    return (!t || p.donor.toLowerCase().includes(t) || (p.via ?? "").toLowerCase().includes(t)) && (!dtype || p.donor_type === dtype);
-  }, [q, dtype]);
-  const active = useMemo(() => (pm ? pm.pledges.map((p, i) => ((picked.length ? picked.includes(p.id) : true) && matches(p) ? i : -1)).filter((i) => i >= 0) : []), [pm, picked, matches]);
+    return !t || p.donor.toLowerCase().includes(t) || (p.via ?? "").toLowerCase().includes(t);
+  }, [q]);
+  const active = useMemo(() => (pm ? pm.pledges.map((p, i) => ((picked ? p.id === picked : matches(p)) ? i : -1)).filter((i) => i >= 0) : []), [pm, picked, matches]);
   const targeted = useMemo(() => (pm ? active.filter((i) => pm.pledges[i].scope !== "national") : []), [pm, active]);
   const broad = useMemo(() => (pm ? active.filter((i) => pm.pledges[i].scope === "national") : []), [pm, active]);
   const colorOf = useCallback((i: number) => TARGET_COLORS[(pm?.pledges.filter((p) => p.scope !== "national").findIndex((p) => p.id === pm.pledges[i].id) ?? 0) % TARGET_COLORS.length], [pm]);
@@ -185,6 +184,7 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
 
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
   const drag = useRef<{ moved: number; pinch?: number } | null>(null);
+  const clickT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const onDown = (e: React.PointerEvent) => {
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -208,7 +208,8 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
   const onUp = (e: React.PointerEvent) => {
     ptrs.current.delete(e.pointerId);
     const d = drag.current; if (ptrs.current.size === 0) drag.current = null;
-    if (d && d.moved < 6) { const p = at(e); if (p) router.push(`/zip/${p.z}`); }
+    // a single click opens the ZIP; wait a moment so a double-click can zoom instead
+    if (d && d.moved < 6) { const p = at(e); if (p) { clearTimeout(clickT.current); clickT.current = setTimeout(() => router.push(`/zip/${p.z}`), 280); } }
   };
 
   const tipPledges = (zc: string) => {
@@ -226,28 +227,29 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
           <button type="button" aria-pressed={layer === "campaigns"} onClick={() => setLayer("campaigns")}>Campaigns</button>
           <button type="button" aria-pressed={layer === "pledges"} onClick={() => setLayer("pledges")}>Big pledges</button>
         </div>
-        {layer === "pledges" && pm && pm.pledges.length > 0 && (
-          <input className="input" style={{ width: 230, maxWidth: "100%", padding: "7px 10px" }} placeholder="Search names or foundations" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search pledges by name or foundation" />
-        )}
+        {layer === "pledges" && pm && pm.pledges.length > 0 && (() => {
+          const opts = pm.pledges.filter(matches);
+          const group = (t: string) => opts.filter((p) => p.donor_type === t);
+          return (
+            <div className="donor-pick">
+              <input className="input" type="search" placeholder="Search a name, e.g. Dell" value={q}
+                onChange={(e) => { setQ(e.target.value); setPicked(""); }} aria-label="Search donors by name" />
+              <select className="input" value={picked} onChange={(e) => setPicked(e.target.value)} aria-label="Show one donor">
+                <option value="">{q.trim() ? `All matches (${opts.length})` : `Everyone (${pm.pledges.length})`}</option>
+                {group("person").length > 0 && <optgroup label="People">{group("person").map((p) => <option key={p.id} value={p.id}>{p.donor}</option>)}</optgroup>}
+                {group("organization").length > 0 && <optgroup label="Organizations">{group("organization").map((p) => <option key={p.id} value={p.id}>{p.donor}</option>)}</optgroup>}
+              </select>
+            </div>
+          );
+        })()}
       </div>
-      {layer === "pledges" && pm && pm.pledges.length > 0 && (
-        <div className="pfilters" role="group" aria-label="Pledges shown on the map">
-          {[["", "All"], ["person", "Personal gifts"], ["foundation", "Through a foundation"], ["company", "Companies"]].map(([k, l]) => (
-            <button key={k || "all"} type="button" aria-pressed={dtype === k} onClick={() => setDtype(k)}>{l}</button>))}
-          <span className="small muted" style={{ alignSelf: "center" }}>·</span>
-          {pm.pledges.filter(matches).map((p) => {
-            const i = pm.pledges.indexOf(p);
-            return (
-              <button key={p.id} type="button" aria-pressed={picked.includes(p.id)} title={`${p.via ? "via " + p.via + " · " : ""}≈ ${moneyC(p.total_cents)} mapped`}
-                onClick={() => setPicked((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))}>
-                {p.scope !== "national" && <i className="swatch" style={{ background: colorOf(i) }} />}{p.donor}
-              </button>
-            );
-          })}
-          {picked.length > 0 && <button type="button" onClick={() => setPicked([])}>Show all</button>}
-          {pm.pledges.filter(matches).length === 0 && <span className="small muted">No mapped pledge matches.</span>}
-        </div>
-      )}
+      {layer === "pledges" && pm && q.trim() && !active.length && <p className="small muted" style={{ margin: "0 0 8px" }}>No mapped donor matches &ldquo;{q.trim()}&rdquo;.</p>}
+      {layer === "pledges" && pm && picked && (() => {
+        const p = pm.pledges.find((x) => x.id === picked);
+        return p ? <p className="small" style={{ margin: "0 0 8px" }}><b>{p.donor}</b>{p.via ? <span className="muted"> · via {p.via}</span> : null} · {p.zips
+          ? <>≈ {moneyC(p.total_cents)} across {fmt(p.zips)} ZIP code{p.zips === 1 ? "" : "s"}</>
+          : <>none of this donor&apos;s ZIP codes are in the loaded Census data</>} · <button type="button" className="linkish" onClick={() => setPicked("")}>show everyone</button></p> : null;
+      })()}
       {layer === "campaigns" ? (
         <div className="legend">
           <span><i style={{ background: "var(--green)" }} />Campaign area with 5,000+ kids</span>
@@ -272,7 +274,7 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
           aria-label={layer === "pledges" ? "Map of U.S. ZIP code areas shaded by estimated dollars per child from big announced pledges. Zoom with the plus and minus buttons." : "Map of U.S. ZIP code areas. Colored dots show ZIP codes in active campaigns. Zoom with the plus and minus buttons."}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
           onPointerLeave={() => { if (!drag.current) setHover(null); }}
-          onDoubleClick={(e) => { const m = local(e); zoomAt(2.2, m.x, m.y); }} />
+          onDoubleClick={(e) => { clearTimeout(clickT.current); const m = local(e); zoomAt(2.2, m.x, m.y); }} />
         <div className="zoombox" role="group" aria-label="Zoom">
           <button type="button" aria-label="Zoom in" onClick={() => zoomAt(2)}>+</button>
           <button type="button" aria-label="Zoom out" onClick={() => zoomAt(0.5)} disabled={v.k <= 1}>−</button>

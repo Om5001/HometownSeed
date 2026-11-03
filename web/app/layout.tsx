@@ -70,6 +70,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {user?.is_demo && <div className="demo-banner"><div className="wrap"><b>Demo account.</b> Shared sample data for trying things out; it will be removed. <SignOutButton /></div></div>}
         {user && !user.email_verified && <VerifyBanner email={user.email} />}
         {children}
+        {/* render stamp: lets the client tell that a refresh brought fresh server data (lib/refresh.ts) */}
+        <span id="hs-render" hidden data-t={`${Date.now()}-${Math.random().toString(36).slice(2, 7)}`} />
         <footer>
           <div className="wrap">
             <p><b style={{ color: "var(--ink)" }}>Hometown Seed is a prototype.</b> It is not affiliated with the U.S. Treasury, the IRS, or any account provider. Gifts are recorded as pledges only; no payments are processed.</p>

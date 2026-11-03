@@ -1,4 +1,4 @@
-import { cleanZips, fail, handle, int, ok, requireUser } from "@/lib/http";
+import { cleanZips, fail, handle, int, ok, requireUser, readJson } from "@/lib/http";
 import { getProfile, saveProfile } from "@/lib/queries";
 
 export const GET = handle(async () => {
@@ -8,7 +8,7 @@ export const GET = handle(async () => {
 
 export const POST = handle(async (req: Request) => {
   const user = await requireUser();
-  const b = await req.json().catch(() => ({}));
+  const b = await readJson(req);
   const home = cleanZips([b.home_zip])[0] ?? null;
   const gifts = (Array.isArray(b.gift_types) ? b.gift_types : []).filter((g: string) => ["cash", "stock", "daf"].includes(g));
   if (!gifts.length) return fail("Pick at least one way you'd like to give.");

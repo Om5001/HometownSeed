@@ -76,6 +76,8 @@ export type SearchHit = { ein: string; name: string; city: string | null; state:
 /** Find 501(c)(3)s by name and/or state. */
 export async function searchOrgs(q: string, state: string): Promise<{ hits: SearchHit[]; source: "irs" | "propublica" }> {
   q = q.trim().slice(0, 80); state = state.trim().toUpperCase().slice(0, 2);
+  const STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
+  if (state && !STATES.includes(state)) throw new HttpError(400, "Use a two-letter state code, like NY.");
   if (q.length < 2 && !state) throw new HttpError(400, "Enter a name or choose a state.");
   const sql = db();
   const [{ loaded }] = await sql<{ loaded: boolean }[]>`

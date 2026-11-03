@@ -153,7 +153,7 @@ export function Builder({ rules, initial, partner, initialAge }: {
           {GOALS.map((g) => <button type="button" key={g.id} aria-pressed={goalType === g.id} onClick={() => setGoalType(g.id)}>{g.t}</button>)}
         </div>
         {goalType === "total" && (<>
-          <div className="money"><input className="input" inputMode="decimal" placeholder="250,000" value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Goal in dollars" /></div>
+          <div className="money"><input className="input" inputMode="decimal" placeholder="for example 250,000" value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Goal in dollars" /></div>
           {kids > 0 && (
             <div className="chips">
               {[25, 50, 100, 250].map((d) => (
@@ -163,7 +163,7 @@ export function Builder({ rules, initial, partner, initialAge }: {
           )}
         </>)}
         {goalType === "per_child" && (<>
-          <div className="money"><input className="input" inputMode="decimal" placeholder="25" value={goalPc} onChange={(e) => setGoalPc(e.target.value)} aria-label="Goal per child in dollars" /></div>
+          <div className="money"><input className="input" inputMode="decimal" placeholder="for example 25" value={goalPc} onChange={(e) => setGoalPc(e.target.value)} aria-label="Goal per child in dollars" /></div>
           <div className="chips">{[25, 50, 100, 250].map((d) => <button type="button" key={d} className="chip-btn" onClick={() => setGoalPc(String(d))}>${d} per child</button>)}</div>
           <p className="hint">The total follows the number of kids: {kids ? <b>{money(goalCents)}</b> : "add places to see it"}{kids ? ` for ${fmt(kids)} kids` : ""}. If you add ZIP codes later, the total grows with them.</p>
         </>)}

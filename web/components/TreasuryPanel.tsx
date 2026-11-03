@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 import type { Application } from "@/lib/treasury";
 import { money } from "@/lib/format";
 
@@ -23,7 +24,7 @@ const STEPS = [
 export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholders, donorSign }: {
   poolId: string; status: string; sub: Sub; messages: Msg[]; mock: boolean; placeholders: string[]; donorSign?: React.ReactNode;
 }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const a = sub?.application;
   const [rec, setRec] = useState(a?.section3.recognition ?? true);
   const [recName, setRecName] = useState(a?.section3.recognition_name ?? "");
@@ -33,7 +34,7 @@ export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholder
   const idx = status === "rejected" ? 0 : STEPS.findIndex((x) => x.s === status);
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     setBusy(true); setMsg("");
-    try { await fn(); if (ok) setMsg(ok); router.refresh(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); if (ok) setMsg(ok); refresh(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const s1 = a?.section1;
 

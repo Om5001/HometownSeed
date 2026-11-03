@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 
 async function post(url: string, body: object = {}) {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -10,7 +11,7 @@ async function post(url: string, body: object = {}) {
 }
 
 export function AccountForms({ name }: { name: string }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [n, setN] = useState(name); const [nMsg, setNMsg] = useState("");
   const [cur, setCur] = useState(""); const [nx, setNx] = useState(""); const [pMsg, setPMsg] = useState("");
   const [dPw, setDPw] = useState(""); const [dConf, setDConf] = useState(""); const [dMsg, setDMsg] = useState("");
@@ -19,7 +20,7 @@ export function AccountForms({ name }: { name: string }) {
       <section className="panel bstep">
         <div className="subhead"><h3>Name</h3></div>
         <div className="addrow"><input className="input" value={n} onChange={(e) => setN(e.target.value)} maxLength={60} aria-label="Your name" />
-          <button className="btn btn-ghost btn-sm" onClick={async () => { try { await post("/api/account", { name: n }); setNMsg("Saved."); router.refresh(); } catch (e) { setNMsg((e as Error).message); } }}>Save</button></div>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { try { await post("/api/account", { name: n }); setNMsg("Saved."); refresh(); } catch (e) { setNMsg((e as Error).message); } }}>Save</button></div>
         {nMsg && <p className="small muted">{nMsg}</p>}
       </section>
 

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, handle, int, ok, requireUser } from "@/lib/http";
+import { fail, handle, int, ok, requireUser, readJson } from "@/lib/http";
 import { audit } from "@/lib/queries";
 import { startPayment } from "@/lib/payments";
 import { pledgePause } from "@/lib/format";
@@ -7,7 +7,7 @@ import { pledgePause } from "@/lib/format";
 /** Record a pledge. In the prototype no money moves (status 'pledged'). */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ slug: string }> }) => {
   const { slug } = await ctx.params;
-  const b = await req.json().catch(() => ({}));
+  const b = await readJson(req);
   const user = await requireUser({ verified: true });
   const amountCents = int(b.amountCents, 0, 100_000_000_00, 0);
   if (amountCents < 500) return fail("The minimum gift is $5.");

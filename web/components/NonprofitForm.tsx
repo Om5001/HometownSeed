@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/refresh";
 import type { Nonprofit, OrgInfo } from "@/lib/nonprofits";
 import { NonprofitBadge } from "./NonprofitBadge";
 
@@ -18,7 +19,7 @@ async function call(url: string, body?: object) {
 
 /** "Your nonprofit" on the profile: say you represent one, look it up by EIN, add it. */
 export function NonprofitForm({ hasNonprofit, mine, verifiedEmail }: { hasNonprofit: boolean; mine: Mine[]; verifiedEmail: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); const refresh = useRefresh();
   const [has, setHas] = useState(hasNonprofit || mine.length > 0);
   const [ein, setEin] = useState(""); const [org, setOrg] = useState<OrgInfo | null>(null); const [notFound, setNotFound] = useState(false);
   const [title, setTitle] = useState(""); const [phone, setPhone] = useState("");
@@ -26,7 +27,7 @@ export function NonprofitForm({ hasNonprofit, mine, verifiedEmail }: { hasNonpro
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
   const run = async (fn: () => Promise<void>) => { setBusy(true); setMsg(""); try { await fn(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } };
 
-  const toggle = (v: boolean) => run(async () => { setHas(v); await call("/api/account", { has_nonprofit: v }); router.refresh(); });
+  const toggle = (v: boolean) => run(async () => { setHas(v); await call("/api/account", { has_nonprofit: v }); refresh(); });
   const lookup = () => run(async () => {
     setOrg(null); setNotFound(false);
     const d = await call("/api/nonprofits/lookup?ein=" + encodeURIComponent(ein));
@@ -35,7 +36,7 @@ export function NonprofitForm({ hasNonprofit, mine, verifiedEmail }: { hasNonpro
   const add = () => run(async () => {
     await call("/api/nonprofits", { ein, title, phone, ...(notFound ? manual : {}) });
     setEin(""); setOrg(null); setNotFound(false); setTitle(""); setPhone("");
-    setMsg("Added. Your profile now shows the check mark."); router.refresh();
+    setMsg("Added. Your profile now shows the check mark."); refresh();
   });
 
   return (
@@ -55,7 +56,7 @@ export function NonprofitForm({ hasNonprofit, mine, verifiedEmail }: { hasNonpro
               <small className="muted">EIN {fmtEin(n.ein)}{n.city ? ` · ${n.city}, ${n.state}` : ""} · You: {n.title}{n.phone ? `, ${n.phone}` : ""}</small>
               <small className="muted">{srcLabel[n.verified_source]}{n.deductible === false ? " · contributions are NOT listed as deductible" : ""}{n.source_url && <> · <a href={n.source_url} target="_blank" rel="noreferrer">ProPublica page</a></>}</small>
               <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} disabled={busy}
-                onClick={() => run(async () => { await call(`/api/nonprofits/${n.id}/remove`, {}); router.refresh(); })}>Remove</button>
+                onClick={() => run(async () => { await call(`/api/nonprofits/${n.id}/remove`, {}); refresh(); })}>Remove</button>
             </div>
           ))}</div>
         )}
