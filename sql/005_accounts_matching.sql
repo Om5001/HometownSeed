@@ -86,7 +86,7 @@ returns table (
     score           numeric,
     reasons         text[]
 )
-language sql stable as $$
+language sql stable set jit = off as $$
     with me as (
         select p.*, coalesce(p.target_zips, '{}') as tz
         from giving_profiles p where p.user_id = p_user

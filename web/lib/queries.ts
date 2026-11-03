@@ -36,18 +36,36 @@ const campaignSelect = (sql: ReturnType<typeof db>) => sql`
              from zcta_stats z where z.zcta = any(s.zctas::char(5)[]) group by 1 order by k desc limit 4) t), '{}') as places
   from v_campaign_stats s left join app_users u on u.id = s.owner_id`;
 
-export async function listCampaigns(opts: { q?: string; zcta?: string; owner?: string; limit?: number } = {}) {
+export async function listCampaigns(opts: { q?: string; zcta?: string; owner?: string; member?: string; limit?: number } = {}) {
   const sql = db();
   const q = (opts.q || "").trim();
+  const limit = opts.limit ?? 24;
+  if (!q) {
+    // Pick the campaigns first from cheap columns, then compute area stats only for those
+    // (the stats view works out kids per area for every row it touches).
+    return sql<CampaignRow[]>`
+      ${campaignSelect(sql)}
+      where s.id = any(array(
+        select k.id from campaigns k
+        left join lateral (select sum(p.amount_cents) as r from pledges p
+                           where p.campaign_id = k.id and p.status in ('pledged', 'pending', 'succeeded')) x on true
+        where k.status = 'active'
+          ${opts.zcta ? sql`and exists (select 1 from campaign_zips z where z.campaign_id = k.id and z.zcta = ${opts.zcta})` : sql``}
+          ${opts.owner ? sql`and k.owner_id = ${opts.owner}` : sql``}
+          ${opts.member ? sql`and exists (select 1 from campaign_members m where m.campaign_id = k.id and m.user_id = ${opts.member})` : sql``}
+        order by x.r desc nulls last, k.created_at desc
+        limit ${limit}))
+      order by s.raised_cents desc, s.created_at desc`;
+  }
   return sql<CampaignRow[]>`
     ${campaignSelect(sql)}
     where s.status = 'active'
       ${opts.zcta ? sql`and ${opts.zcta} = any(s.zctas)` : sql``}
       ${opts.owner ? sql`and s.owner_id = ${opts.owner}` : sql``}
-      ${q ? sql`and (s.name ilike ${"%" + q + "%"} or ${q} = any(s.zctas)
-                     or exists (select 1 from zcta_stats z where z.zcta = any(s.zctas::char(5)[]) and z.place_name ilike ${q + "%"}))` : sql``}
+      and (s.name ilike ${"%" + q + "%"} or ${q} = any(s.zctas)
+           or exists (select 1 from zcta_stats z where z.zcta = any(s.zctas::char(5)[]) and z.place_name ilike ${q + "%"}))
     order by s.raised_cents desc, s.created_at desc
-    limit ${opts.limit ?? 24}`;
+    limit ${limit}`;
 }
 
 export async function getCampaign(slug: string) {
@@ -170,16 +188,22 @@ export async function getZip(zcta: string) {
   return z ?? null;
 }
 
+let censusTotals: { at: number; v: { all_zips: number; all_kids: number; acs_year: number } } | null = null;
 export async function homeStats() {
-  const [s] = await db()`
-    select count(*)::int as campaigns, coalesce(sum(raised_cents), 0)::float8 as raised,
-           (select count(distinct cz.zcta)::int from campaign_zips cz join campaigns c on c.id = cz.campaign_id where c.status = 'active') as zips,
+  const sql = db();
+  // National totals only change when Census data reloads: computed at most once an hour
+  const totals = censusTotals && Date.now() - censusTotals.at < 3600_000 ? Promise.resolve([censusTotals.v])
+    : sql<{ all_zips: number; all_kids: number; acs_year: number }[]>`
+        select count(*)::int as all_zips, coalesce(sum(kids_u18), 0)::float8 as all_kids, max(acs_year) as acs_year from zcta_stats`;
+  const [[t], [c]] = await Promise.all([totals, sql<{ campaigns: number; raised: number; zips: number; kids: number }[]>`
+    select count(*)::int as campaigns, coalesce(sum(c.raised), 0)::float8 as raised,
+           (select count(distinct cz.zcta)::int from campaign_zips cz join campaigns x on x.id = cz.campaign_id where x.status = 'active') as zips,
            (select coalesce(sum(z.kids_u18), 0)::float8 from zcta_stats z where z.zcta in
-               (select cz.zcta from campaign_zips cz join campaigns c on c.id = cz.campaign_id where c.status = 'active')) as kids,
-           (select count(*)::int from zcta_stats) as all_zips,
-           (select coalesce(sum(kids_u18), 0)::float8 from zcta_stats) as all_kids,
-           (select max(acs_year) from zcta_stats) as acs_year
-    from v_campaign_stats where status = 'active'`;
+               (select cz.zcta from campaign_zips cz join campaigns x on x.id = cz.campaign_id where x.status = 'active')) as kids
+    from (select (select coalesce(sum(p.amount_cents), 0) from pledges p where p.campaign_id = k.id and p.status in ('pledged', 'pending', 'succeeded')) as raised
+          from campaigns k where k.status = 'active') c`]);
+  censusTotals = { at: Date.now(), v: t };
+  const s = { ...c, ...t };
   return s as { campaigns: number; raised: number; zips: number; kids: number; all_zips: number; all_kids: number; acs_year: number };
 }
 
@@ -229,14 +253,24 @@ export type DeckCard = {
   kind: "campaign" | "person"; id: string; slug: string | null; title: string; subtitle: string; miles: number | null;
   per_child_cents: number | null; kids: number | null; raised_cents: number | null; goal_cents: number | null;
   gift_types: string[]; min_age: number; max_age: number; shared_zips: number; score: number; reasons: string[];
+  nonprofit?: string | null;   // people: the 501(c)(3) they represent
 };
 
 export async function getDeck(userId: string, limit = 30) {
-  return db()<DeckCard[]>`
+  const cards = await db()<DeckCard[]>`
     select kind, id, slug, title, subtitle, miles::float8 as miles, per_child_cents::float8 as per_child_cents,
            kids::float8 as kids, raised_cents::float8 as raised_cents, goal_cents::float8 as goal_cents,
            gift_types, min_age, max_age, shared_zips, score::float8 as score, reasons
     from match_deck(${userId}, ${limit})`;
+  const people = cards.filter((c) => c.kind === "person").map((c) => c.id);
+  if (people.length) {
+    const reps = await db()<{ user_id: string; name: string }[]>`
+      select distinct on (r.user_id) r.user_id, n.name from nonprofit_reps r join nonprofits n on n.id = r.nonprofit_id
+      where r.user_id = any(${people}::uuid[]) order by r.user_id, (n.verified_source <> 'self') desc`;
+    const by = new Map(reps.map((r) => [r.user_id, r.name]));
+    for (const c of cards) if (c.kind === "person") c.nonprofit = by.get(c.id) ?? null;
+  }
+  return cards;
 }
 
 export async function getConnections(userId: string) {

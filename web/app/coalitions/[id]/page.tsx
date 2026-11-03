@@ -4,10 +4,12 @@ import { requirePageUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureCurrentAgreement, getSigners, LOCKED, type buildDocument, type Person } from "@/lib/coalition";
 import { fmt, money, moneyC, perChild } from "@/lib/format";
-import { LeaveCoalition, PrintButton, SignForm } from "@/components/CoalitionActions";
+import { DonorChooser, DonorSignForm, LeaveCoalition, PrintButton, SignForm } from "@/components/CoalitionActions";
+import { NonprofitBadge } from "@/components/NonprofitBadge";
+import { donorOptions, getDonor, nonprofitBadges } from "@/lib/nonprofits";
 import { TreasuryPanel } from "@/components/TreasuryPanel";
 import { getOutbox, getSubmission, mockTreasuryEnabled, roleLabel } from "@/lib/treasury";
-import { platformPlaceholders } from "@/lib/platform";
+import { PLATFORM } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 type Doc = Awaited<ReturnType<typeof buildDocument>>;
@@ -17,24 +19,31 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const user = await requirePageUser(`/coalitions/${id}`);
   const sql = db();
-  const [pool] = await sql<{ id: string; name: string; status: string }[]>`select id, name, status from pools where id = ${id}`;
-  if (!pool) notFound();
   await ensureCurrentAgreement(id);
-  const live = await sql<Person[]>`select user_id, name, email, organizer_of, owner_of, pledged_cents::float8 as pledged_cents from coalition_people(${id})`;
-  const [doc] = await sql<{ id: string; version: number; content: Doc; content_hash: string; created_at: string; status: string }[]>`
-    select id, version, content, content_hash, created_at, status from coalition_documents where pool_id = ${id}
-    order by (status = 'active') desc, version desc limit 1`;
-  const signers = doc ? await getSigners(sql, doc.id) : [];
+  const [[pool], live, [doc], [firstCampaign]] = await Promise.all([
+    sql<{ id: string; name: string; status: string }[]>`select id, name, status from pools where id = ${id}`,
+    sql<Person[]>`select user_id, name, email, organizer_of, owner_of, pledged_cents::float8 as pledged_cents from coalition_people(${id})`,
+    sql<{ id: string; version: number; content: Doc; content_hash: string; created_at: string; status: string }[]>`
+      select id, version, content, content_hash, created_at, status from coalition_documents where pool_id = ${id}
+      order by (status = 'active') desc, version desc limit 1`,
+    sql<{ slug: string; name: string }[]>`
+      select c.slug, c.name from campaigns c
+      where c.pool_id = ${id} and (exists (select 1 from campaign_members m where m.campaign_id = c.id and m.user_id = ${user.id})
+                                   or exists (select 1 from pledges p where p.campaign_id = c.id and p.user_id = ${user.id}))
+      order by c.created_at limit 1`,
+  ]);
+  if (!pool) notFound();
+  const [signers, donor, options, isOrganizer] = await Promise.all([
+    doc ? getSigners(sql, doc.id) : Promise.resolve([]),
+    getDonor(sql, id), donorOptions(sql, id),
+    sql`select 1 from campaigns c join campaign_members m on m.campaign_id = c.id where c.pool_id = ${id} and m.user_id = ${user.id}`.then((r) => r.length > 0),
+  ]);
+  const badges = await nonprofitBadges([...new Set([...live.map((p) => p.user_id), ...signers.map((p) => p.user_id)])]);
   const meLive = live.find((p) => p.user_id === user.id);
   const meSigner = signers.find((s) => s.user_id === user.id);
   if (!meLive && !meSigner) return (
     <main className="wrap section"><h2>This agreement is private</h2><p className="lede2">Only the organizers and donors in this coalition can see it.</p></main>
   );
-  const [firstCampaign] = await sql<{ slug: string; name: string }[]>`
-    select c.slug, c.name from campaigns c
-    where c.pool_id = ${id} and (exists (select 1 from campaign_members m where m.campaign_id = c.id and m.user_id = ${user.id})
-                                 or exists (select 1 from pledges p where p.campaign_id = c.id and p.user_id = ${user.id}))
-    order by c.created_at limit 1`;
   const back = firstCampaign ? { href: `/c/${firstCampaign.slug}`, name: firstCampaign.name } : { href: "/me", name: "your campaigns" };
   const statusText: Record<string, string> = {
     forming: "Forming: waiting for every campaign to confirm", confirmed: "Out for signature: everyone signs or leaves",
@@ -50,12 +59,23 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
     "Everyone left gets a new version of the agreement to sign. If the area drops below 5,000 kids, the coalition goes back to forming.",
   ] : [];
 
+  const donorPanel = isOrganizer && ["forming", "confirmed"].includes(pool.status) ? (
+    <section className="panel noprint" style={{ maxWidth: 860, margin: "18px auto 0" }}>
+      <p className="eyebrow">Qualified Donor</p>
+      <h2 style={{ marginTop: 4 }}>Who applies to Treasury?</h2>
+      <p className="hint" style={{ margin: "6px 0 12px" }}>The 501(c)(3) that receives the coalition&apos;s gifts, signs Treasury&apos;s application, and sends the money. Now: <b>{donor.entity_name}</b>.</p>
+      <DonorChooser poolId={id} current={donor.nonprofit_id} platformName={PLATFORM.entity_name} confirmed={pool.status === "confirmed"}
+        options={options.map((o) => ({ id: o.id, name: o.name, ein: o.ein, city: o.city, state: o.state, verified_source: o.verified_source, rep_name: o.rep_name }))} />
+    </section>
+  ) : null;
+
   if (!doc || doc.status !== "active") return (
     <main className="wrap section">
       <h2>{pool.name}</h2>
       <p className="lede2">{statusText[pool.status]}. The agreement is drawn up once every campaign in the coalition has confirmed it&apos;s ready; then everyone in it signs.</p>
       <h3 style={{ marginTop: 18 }}>Who&apos;s in it so far</h3>
-      <ul className="small">{live.map((p) => <li key={p.user_id}>{p.name} <span className="muted">· {roleLabel(p)}</span></li>)}</ul>
+      <ul className="small">{live.map((p) => <li key={p.user_id}>{p.name} {badges.has(p.user_id) && <NonprofitBadge compact />} <span className="muted">· {roleLabel(p)}</span></li>)}</ul>
+      {donorPanel}
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <Link className="btn btn-ghost btn-sm" href={back.href}>Back to {back.name}</Link>
         {canLeave && <LeaveCoalition poolId={id} consequences={consequences} backTo={back.href} />}
@@ -125,7 +145,7 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
         {signers.length ? (
           <table className="signers"><thead><tr><th>Name</th><th>Role</th><th className="n">Pledged</th><th>Signature</th></tr></thead>
             <tbody>{signers.map((s) => (
-              <tr key={s.user_id}><td><b>{s.name}</b>{s.user_id === user.id && <span className="meta"> (you)</span>}</td><td className="meta">{roleLabel(s)}</td>
+              <tr key={s.user_id}><td><b>{s.name}</b>{s.user_id === user.id && <span className="meta"> (you)</span>}{badges.has(s.user_id) && <div><NonprofitBadge name={badges.get(s.user_id)} /></div>}</td><td className="meta">{roleLabel(s)}</td>
                 <td className="n">{s.pledged_cents ? money(s.pledged_cents) : "—"}</td>
                 <td className="st">{s.signed ? <>/s/ {s.signed_name}<div className="meta">{new Date(s.signed_at!).toLocaleString("en-US")}</div></> : <span className="meta">Waiting</span>}</td></tr>
             ))}</tbody></table>
@@ -133,8 +153,14 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
         <p className="hash" style={{ marginTop: 18 }}>Document fingerprint (SHA-256): {doc.content_hash}</p>
       </article>
 
+      {donorPanel}
       {treasuryStage && (
-        <TreasuryPanel poolId={id} status={pool.status} sub={sub} messages={messages} mock={mockTreasuryEnabled()} placeholders={platformPlaceholders()} />
+        <TreasuryPanel poolId={id} status={pool.status} sub={sub} messages={messages} mock={mockTreasuryEnabled()} placeholders={sub?.application?.placeholders ?? []}
+          donorSign={sub?.application?.donor_kind === "member" && !sub.application.section4.certified && ["approved", "rejected"].includes(pool.status)
+            ? (sub.application.donor_rep_user_id === user.id
+                ? <DonorSignForm poolId={id} repName={sub.application.section1.rep_name} org={sub.application.section1.entity_name} />
+                : <p className="small">Waiting for <b>{sub.application.section1.rep_name}</b> to sign Section 4 for {sub.application.section1.entity_name}.</p>)
+            : null} />
       )}
       {treasuryStage && canLeave && (
         <section className="panel noprint" style={{ maxWidth: 860, margin: "18px auto 0" }}>

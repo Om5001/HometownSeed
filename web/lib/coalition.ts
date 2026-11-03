@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { getRules } from "./queries";
-import { PLATFORM } from "./platform";
+import { donorOptions, getDonor } from "./nonprofits";
 import { sendEmail } from "./email";
 import { prepareApplication } from "./treasury";
 import type { User } from "./auth";
@@ -48,33 +48,47 @@ export async function ensureCurrentAgreement(poolId: string) {
 export async function coalitionState(campaign: { id: string; pool_id: string | null; meets_min: boolean }, userId?: string | null): Promise<CoalitionState> {
   const sql = db();
   if (!campaign.pool_id) return { pool: null, campaigns: [], document: null, signers: [], me: { party: false, signed: false }, stage: "coalition" };
-  await ensureCurrentAgreement(campaign.pool_id);
-  const [pool] = await sql<NonNullable<CoalitionState["pool"]>[]>`
-    select id, name, status, kids_u18::float8 as kids_u18, kids_in_class::float8 as kids, raised_cents::float8 as raised, meets_min, zip_count
-    from v_pool_stats where id = ${campaign.pool_id}`;
-  const [doc] = await sql<NonNullable<CoalitionState["document"]>[]>`
-    select id, version, content_hash, created_at from coalition_documents where pool_id = ${campaign.pool_id} and status = 'active'
-    order by version desc limit 1`;
-  const campaigns = await sql<CoalitionState["campaigns"]>`
-    select c.id, c.slug, c.name,
-           exists (select 1 from coalition_confirmations k where k.pool_id = c.pool_id and k.campaign_id = c.id) as confirmed
-    from campaigns c where c.pool_id = ${campaign.pool_id} order by c.created_at`;
-  const signers = doc ? await getSigners(sql, doc.id) : [];
-  const live = userId ? await sql`select 1 from coalition_people(${campaign.pool_id}) where user_id = ${userId}` : [];
+  const poolId = campaign.pool_id;
+  await ensureCurrentAgreement(poolId);
+  // independent lookups run side by side (each one is a round trip to the database)
+  const [[pool], [doc], campaigns, live] = await Promise.all([
+    sql<NonNullable<CoalitionState["pool"]>[]>`
+      select id, name, status, kids_u18::float8 as kids_u18, kids_in_class::float8 as kids, raised_cents::float8 as raised, meets_min, zip_count
+      from v_pool_stats where id = ${poolId}`,
+    sql<(NonNullable<CoalitionState["document"]> & { people: Person[] | null; sigs: SigRow[] })[]>`
+      select d.id, d.version, d.content_hash, d.created_at, d.content -> 'people' as people,
+             coalesce((select json_agg(json_build_object('user_id', g.user_id, 'signed_name', g.signed_name, 'signed_at', g.signed_at::text))
+                       from document_signatures g where g.document_id = d.id), '[]') as sigs
+      from coalition_documents d where d.pool_id = ${poolId} and d.status = 'active' order by d.version desc limit 1`,
+    sql<CoalitionState["campaigns"]>`
+      select c.id, c.slug, c.name,
+             exists (select 1 from coalition_confirmations k where k.pool_id = c.pool_id and k.campaign_id = c.id) as confirmed
+      from campaigns c where c.pool_id = ${poolId} order by c.created_at`,
+    userId ? sql`select 1 from coalition_people(${poolId}) where user_id = ${userId}` : Promise.resolve([]),
+  ]);
+  const signers = doc ? mergeSigners(doc.people, doc.sigs) : [];
   const mine = signers.find((s) => s.user_id === userId);
   const stage: Stage = ["forming", "confirmed"].includes(pool.status) ? "coalition"
     : ["approved", "submitted", "rejected"].includes(pool.status) ? "approval"
     : ["accepted", "funded"].includes(pool.status) ? "send" : "done";
-  return { pool, campaigns, document: doc ?? null, signers, me: { party: !!mine || live.length > 0, signed: !!mine?.signed }, stage };
+  const document = doc ? { id: doc.id, version: doc.version, content_hash: doc.content_hash, created_at: doc.created_at } : null;
+  return { pool, campaigns, document, signers, me: { party: !!mine || live.length > 0, signed: !!mine?.signed }, stage };
 }
 
-/** The people named in an agreement version, with whether each has signed. */
-export async function getSigners(sql: Sql, documentId: string): Promise<Signer[]> {
-  const [d] = await sql<{ content: { people?: Person[] } }[]>`select content from coalition_documents where id = ${documentId}`;
-  const sigs = await sql<{ user_id: string; signed_name: string; signed_at: string }[]>`
-    select user_id, signed_name, signed_at::text from document_signatures where document_id = ${documentId}`;
+type SigRow = { user_id: string; signed_name: string; signed_at: string };
+function mergeSigners(people: Person[] | null | undefined, sigs: SigRow[]): Signer[] {
   const by = new Map(sigs.map((s) => [s.user_id, s]));
-  return (d?.content.people ?? []).map((p) => ({ ...p, signed: by.has(p.user_id), signed_name: by.get(p.user_id)?.signed_name ?? null, signed_at: by.get(p.user_id)?.signed_at ?? null }));
+  return (people ?? []).map((p) => ({ ...p, signed: by.has(p.user_id), signed_name: by.get(p.user_id)?.signed_name ?? null, signed_at: by.get(p.user_id)?.signed_at ?? null }));
+}
+
+/** The people named in an agreement version, with whether each has signed (one round trip). */
+export async function getSigners(sql: Sql, documentId: string): Promise<Signer[]> {
+  const [d] = await sql<{ people: Person[] | null; sigs: SigRow[] }[]>`
+    select d.content -> 'people' as people,
+           coalesce((select json_agg(json_build_object('user_id', g.user_id, 'signed_name', g.signed_name, 'signed_at', g.signed_at::text))
+                     from document_signatures g where g.document_id = d.id), '[]') as sigs
+    from coalition_documents d where d.id = ${documentId}`;
+  return d ? mergeSigners(d.people, d.sigs) : [];
 }
 
 async function assertOrganizer(campaignId: string, userId: string) {
@@ -139,6 +153,7 @@ export async function buildDocument(sql: Sql, poolId: string) {
            z.median_hh_income as income
     from zcta_stats z join acs_zcta_children a on a.zcta = z.zcta and a.acs_year = z.acs_year
     where z.zcta = any(${p.zctas}::char(5)[]) order by z.zcta`;
+  const donor = await getDonor(sql, poolId);
   const year = new Date().getUTCFullYear();
   const perChild = p.kids > 0 ? Math.floor(p.raised / p.kids) : 0;   // cents, equal for every child
   return {
@@ -151,8 +166,12 @@ export async function buildDocument(sql: Sql, poolId: string) {
     })),
     people,   // everyone who must sign
     charity: {
-      name: PLATFORM.entity_name, ein: PLATFORM.ein, type: "501(c)(3) public charity",
-      note: "Hometown Seed's nonprofit receives the coalition's gifts and makes one general funding contribution to Treasury as the Qualified Donor.",
+      name: donor.entity_name, ein: donor.ein, type: "501(c)(3) public charity", kind: donor.kind,
+      representative: donor.kind === "member" ? `${donor.rep_name}, ${donor.rep_title}` : null,
+      verified: donor.verified_source,
+      note: donor.kind === "member"
+        ? `${donor.entity_name}, represented in this coalition by ${donor.rep_name}, receives the coalition's gifts and makes one general funding contribution to Treasury as the Qualified Donor.`
+        : "Hometown Seed's nonprofit receives the coalition's gifts and makes one general funding contribution to Treasury as the Qualified Donor.",
     },
     qualified_class: {
       zip_codes: zips,
@@ -172,7 +191,7 @@ export async function buildDocument(sql: Sql, poolId: string) {
     terms: [
       "Everyone named in section 5 signs this agreement, or leaves the coalition. It takes effect when all of them have signed.",
       "Every child in the qualified class receives the same amount, as the Treasury regulations require.",
-      `Pledges become tax-deductible donations to ${PLATFORM.entity_name}, a 501(c)(3), which applies to Treasury as the Qualified Donor and makes one general funding contribution for this class.`,
+      `Pledges become tax-deductible donations to ${donor.entity_name}, a 501(c)(3), which applies to Treasury as the Qualified Donor and makes one general funding contribution for this class.`,
       "The contribution is the total in section 3. New pledges are paused while this agreement is out for signature and with Treasury.",
       "Anyone may leave before the application is sent to Treasury. Leaving withdraws that person's pledges (and takes out any campaign they own); a new version of this agreement is then drawn up and the others sign again.",
       "Treasury approves each request at its discretion. If it declines, the funds stay with the charity and the coalition decides together, through a new agreement, where they go.",
@@ -221,6 +240,10 @@ export async function signDocument(user: User, documentId: string, signedName: s
 async function afterMembershipChange(tx: Sql, poolId: string, prior: string): Promise<{ status: string; newAgreement?: boolean }> {
   const [{ n }] = await tx<{ n: number }[]>`select count(*)::int as n from campaigns where pool_id = ${poolId}`;
   await tx`select reset_coalition(${poolId})`;
+  // If the Qualified Donor's representative left, fall back to Hometown Seed's nonprofit
+  await tx`update pools set donor_nonprofit_id = null, donor_rep_user_id = null
+           where id = ${poolId} and donor_nonprofit_id is not null
+             and not exists (select 1 from coalition_people(${poolId}) x where x.user_id = pools.donor_rep_user_id)`;
   if (n === 0) {
     const [{ subs }] = await tx<{ subs: number }[]>`select count(*)::int as subs from treasury_submissions where pool_id = ${poolId}`;
     if (!subs) await tx`delete from pools where id = ${poolId}`;
@@ -300,6 +323,32 @@ export async function deleteCampaign(user: User, slug: string) {
     const prior = c.pool_id ? await lockedPool(tx, c.pool_id) : null;
     await tx`select delete_campaign(${c.id})`;
     return c.pool_id ? { poolId: c.pool_id, ...(await afterMembershipChange(tx, c.pool_id, prior!)) } : { status: "deleted" };
+  });
+}
+
+/**
+ * Organizers choose the coalition's Qualified Donor: Hometown Seed's 501(c)(3) (null), or a
+ * nonprofit represented by someone in the coalition. If the agreement is out for signature,
+ * it's redrawn (everyone signs the new version).
+ */
+export async function setDonor(user: User, poolId: string, nonprofitId: string | null) {
+  const sql = db();
+  const [org] = await sql`select 1 from campaigns c join campaign_members m on m.campaign_id = c.id where c.pool_id = ${poolId} and m.user_id = ${user.id}`;
+  if (!org) throw new HttpError(403, "Only organizers in this coalition can choose the Qualified Donor.");
+  let rep: string | null = null;
+  if (nonprofitId) {
+    const opt = (await donorOptions(sql, poolId)).find((o) => o.id === nonprofitId);
+    if (!opt) throw new HttpError(400, "That nonprofit isn't represented by anyone in this coalition.");
+    rep = opt.rep_user_id;
+  }
+  return sql.begin(async (t) => {
+    const tx = t as unknown as Sql;
+    const [p] = await tx<{ status: string; donor_nonprofit_id: string | null }[]>`select status, donor_nonprofit_id from pools where id = ${poolId} for update`;
+    if (!["forming", "confirmed"].includes(p.status)) throw new HttpError(400, "The Qualified Donor can be changed until everyone has signed the agreement.");
+    if (p.donor_nonprofit_id === nonprofitId) return { status: p.status, changed: false };
+    await tx`update pools set donor_nonprofit_id = ${nonprofitId}, donor_rep_user_id = ${rep} where id = ${poolId}`;
+    if (p.status === "confirmed") { await createDocument(tx, poolId); return { status: "confirmed", changed: true, newAgreement: true }; }
+    return { status: p.status, changed: true };
   });
 }
 

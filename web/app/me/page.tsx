@@ -10,18 +10,17 @@ export default async function Me({ searchParams }: { searchParams: Promise<{ del
   const user = await requirePageUser("/me");
   const { deleted } = await searchParams;
   const sql = db();
-  const ids = await sql<{ slug: string }[]>`select c.slug from campaign_members m join campaigns c on c.id = m.campaign_id where m.user_id = ${user.id}`;
-  const all = await listCampaigns({ limit: 60 });
-  const mine = all.filter((c) => ids.some((i) => i.slug === c.slug));
-  // Coalitions this person is in (as organizer or donor), and whether their signature is needed
-  const coalitions = await sql<{ id: string; name: string; status: string; needs_sig: boolean }[]>`
+  // Campaigns they organize, and coalitions they're in (as organizer or donor) and whether their signature is needed
+  const [mine, coalitions] = await Promise.all([listCampaigns({ member: user.id, limit: 60 }), sql<{ id: string; name: string; status: string; needs_sig: boolean }[]>`
     select p.id, p.name, p.status,
            (p.status = 'confirmed' and d.content -> 'people' @> jsonb_build_array(jsonb_build_object('user_id', ${user.id}::text))
             and not exists (select 1 from document_signatures s where s.document_id = d.id and s.user_id = ${user.id})) as needs_sig
     from pools p
     left join coalition_documents d on d.pool_id = p.id and d.status = 'active'
-    where exists (select 1 from coalition_people(p.id) x where x.user_id = ${user.id})
-    order by needs_sig desc, p.created_at desc`;
+    where p.id in (select c.pool_id from campaigns c where c.pool_id is not null and (
+        exists (select 1 from campaign_members m where m.campaign_id = c.id and m.user_id = ${user.id})
+        or exists (select 1 from pledges pl where pl.campaign_id = c.id and pl.user_id = ${user.id} and pl.status in ('pledged', 'pending', 'succeeded'))))
+    order by needs_sig desc, p.created_at desc`]);
   const label: Record<string, string> = { forming: "Forming", confirmed: "Out for signature", approved: "Signed: ready for Treasury", submitted: "With Treasury",
     rejected: "Not approved by Treasury", accepted: "Approved by Treasury", funded: "Money sent", distributed: "In kids' accounts" };
   return (

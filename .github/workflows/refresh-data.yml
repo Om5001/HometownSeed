@@ -23,3 +23,8 @@ jobs:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: zipgive refresh --year "${{ github.event.inputs.year || vars.ACS_YEAR || '2024' }}"
+      - name: Pull IRS 501(c)(3) list for the states in IRS_STATES (optional)
+        if: ${{ vars.IRS_STATES != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: zipgive irs-orgs --states "${{ vars.IRS_STATES }}"

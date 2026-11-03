@@ -11,20 +11,39 @@ export function ZipSearch({ onPick, placeholder = "Enter a ZIP code or city", bu
   const router = useRouter();
   const [q, setQ] = useState(""); const [hits, setHits] = useState<Hit[]>([]); const [err, setErr] = useState("");
   const t = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const seq = useRef(0);            // ignore answers to older keystrokes
+  const [looking, setLooking] = useState(false);
+
+  const lookup = async (v: string): Promise<Hit[]> => {
+    const r = await fetch("/api/search?q=" + encodeURIComponent(v));
+    return r.ok ? await r.json() : [];
+  };
   useEffect(() => {
     clearTimeout(t.current);
+    setErr("");
     const v = q.trim();
     if (v.length < 2) { setHits([]); return; }
+    const mine = ++seq.current;
     t.current = setTimeout(async () => {
-      const r = await fetch("/api/search?q=" + encodeURIComponent(v)); setHits(r.ok ? await r.json() : []);
+      const h = await lookup(v).catch(() => []);
+      if (mine === seq.current) setHits(h);
     }, 180);
   }, [q]);
-  const pick = (h: Hit) => { setQ(""); setHits([]); setErr(""); onPick ? onPick(h) : router.push(`/zip/${h.zcta}`); };
-  const submit = (e: React.FormEvent) => {
+  const pick = (h: Hit) => { seq.current++; setQ(""); setHits([]); setErr(""); onPick ? onPick(h) : router.push(`/zip/${h.zcta}`); };
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const v = q.trim();
-    if (hits.length) return pick(hits.find((h) => h.zcta === v) ?? hits[0]);
-    setErr(/^\d{5}$/.test(v) ? "We don't have Census data for that ZIP (it may be a PO box or business ZIP)." : "Enter a 5-digit ZIP code or a city name.");
+    if (v.length < 2) return setErr("Enter a 5-digit ZIP code or a city name.");
+    // Pressing Enter before the suggestions arrive: look it up now instead of reporting "not found".
+    clearTimeout(t.current);
+    const mine = ++seq.current;
+    setLooking(true);
+    let list = hits;
+    try { list = await lookup(v); } catch { list = hits; } finally { setLooking(false); }
+    if (mine !== seq.current) return;
+    if (list.length) return pick(list.find((h) => h.zcta === v) ?? list[0]);
+    setHits([]);
+    setErr(/^\d{5}$/.test(v) ? "We don't have Census data for that ZIP (it may be a PO box or business ZIP)." : "No ZIP code or city matches that. Try a 5-digit ZIP.");
   };
   return (
     <div className="combo">
@@ -33,7 +52,7 @@ export function ZipSearch({ onPick, placeholder = "Enter a ZIP code or city", bu
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" style={{ color: "var(--muted)", flex: "none" }}><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} autoComplete="off" autoFocus={autoFocus} />
         </label>
-        <button className="btn btn-green" type="submit">{button}</button>
+        <button className="btn btn-green" type="submit" disabled={looking}>{looking ? "…" : button}</button>
       </form>
       {hits.length > 0 && (
         <div className="sugg" role="listbox">

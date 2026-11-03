@@ -77,6 +77,19 @@ def cmd_load_crosswalk(args) -> None:
             print(f"zip_to_zcta: {st['rows']} rows")
 
 
+def cmd_irs_orgs(args) -> None:
+    """Load 501(c)(3)s from the IRS EO BMF state files (used to verify and search nonprofits)."""
+    from . import irs
+    states = irs.STATES if args.states.strip().lower() == "all" else [s.strip().upper() for s in args.states.split(",") if s.strip()]
+    with db.connect(_env("DATABASE_URL")) as conn:
+        db.migrate(conn)
+        for st in states:
+            with db.run_log(conn, "irs_exempt_orgs", {"state": st}) as run:
+                rows = irs.fetch_state(st)
+                run["rows"] = db.upsert(conn, "irs_exempt_orgs", rows, key=["ein"], columns=irs.COLUMNS)
+                print(f"irs_exempt_orgs: {run['rows']} 501(c)(3)s in {st}")
+
+
 def _print_rows(cur) -> None:
     cols = [d.name for d in cur.description]
     for row in cur.fetchall():
@@ -119,6 +132,11 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("path")
     c.add_argument("--source")
     c.set_defaults(fn=cmd_load_crosswalk)
+
+    i = sub.add_parser("irs-orgs", help="load 501(c)(3)s from the IRS exempt-organization file")
+    i.add_argument("--states", default=os.environ.get("IRS_STATES", "NY"),
+                   help="comma-separated state codes, or 'all' (about 1.5 GB download, ~1.2M rows)")
+    i.set_defaults(fn=cmd_irs_orgs)
 
     q = sub.add_parser("query", help="estimate children for a set of ZIPs")
     q.add_argument("zips", nargs="+")

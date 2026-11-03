@@ -7,7 +7,7 @@ function Form() {
   const router = useRouter(); const sp = useSearchParams();
   const next = sp.get("next") || "";
   const [mode, setMode] = useState<"in" | "up">(sp.get("mode") === "signup" ? "up" : "in");
-  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [pw, setPw] = useState("");
+  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [pw, setPw] = useState(""); const [np, setNp] = useState(false);
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<{ devLink?: string } | null>(null);
   const dest = next.startsWith("/") && !next.startsWith("//") ? next : mode === "up" ? "/account?welcome=1" : "/match";
@@ -24,7 +24,7 @@ function Form() {
     try {
       const r = await fetch(mode === "in" ? "/api/auth/login" : "/api/auth/signup", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(mode === "in" ? { email, password: pw } : { email, password: pw, name }),
+        body: JSON.stringify(mode === "in" ? { email, password: pw } : { email, password: pw, name, hasNonprofit: np }),
       });
       const d = await r.json();
       if (!r.ok) return setErr(d.error);
@@ -43,12 +43,32 @@ function Form() {
         <label className="field"><span>Email</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
         <label className="field"><span>Password {mode === "up" && <em>at least 10 characters; a short phrase works well</em>}</span>
           <input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} /></label>
+        {mode === "up" && <label className="check"><input type="checkbox" checked={np} onChange={(e) => setNp(e.target.checked)} /><span>I represent a 501(c)(3) nonprofit (you&apos;ll add its EIN on your profile, and it can apply to Treasury for your coalition)</span></label>}
         {err && <p className="err" role="alert">{err}</p>}
         <button className="btn btn-green submit" disabled={busy}>{busy ? "One moment…" : mode === "in" ? "Sign in" : "Create account"}</button>
       </form>
       {mode === "in" && <Link className="small" href="/forgot">Forgot your password?</Link>}
       {next && <p className="small muted">Sign in to start campaigns, pledge, and match with other givers.</p>}
+      <DemoButton dest={next.startsWith("/") && !next.startsWith("//") ? next : "/me"} />
     </>
+  );
+}
+
+/** TEMPORARY: one-click sign-in to the shared demo account. Remove with sql/demo. */
+function DemoButton({ dest }: { dest: string }) {
+  const router = useRouter();
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  return (
+    <div className="demo-box">
+      <p className="small"><b>Just looking?</b> Explore a demo account with sample campaigns in Dutchess County, NY. Anyone can use it, so don&apos;t enter anything private.</p>
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={async () => {
+        setBusy(true); setErr("");
+        const r = await fetch("/api/auth/demo", { method: "POST" });
+        if (!r.ok) { setErr((await r.json().catch(() => ({}))).error || "The demo isn't available."); setBusy(false); return; }
+        router.push(dest); router.refresh();
+      }}>{busy ? "Opening the demo…" : "Try the demo account"}</button>
+      {err && <p className="err">{err}</p>}
+    </div>
   );
 }
 

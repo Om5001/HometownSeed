@@ -13,3 +13,8 @@ insert into zcta_geo (zcta, lat, lon, land_sqmi, gazetteer_year, place_name, pla
  ('59001',45.53,-109.47,300,2024,'Absarokee','MT')
 on conflict do nothing;
 refresh materialized view zcta_stats;
+-- one 501(c)(3) in the IRS exempt-organization table (fake EIN) for nonprofit tests
+insert into irs_exempt_orgs (ein, name, street, city, state, zip, subsection, deductibility, ruling, foundation, ntee_cd, revenue_amt)
+values ('000000123', 'TEST COMMUNITY FOUNDATION', '1 MAIN ST', 'BROOKLYN', 'NY', '11234', '03', '1', '200001', '15', 'T31', 500000),
+       ('000000456', 'TEST SOCIAL CLUB', '2 MAIN ST', 'BROOKLYN', 'NY', '11234', '07', '2', '199001', '00', 'N50', 1000)
+on conflict do nothing;

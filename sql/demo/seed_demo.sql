@@ -1,0 +1,163 @@
+-- ============================================================================
+-- TEMPORARY DEMO DATA. Everything here is removed by sql/demo/remove_demo.sql.
+--   * Demo people: emails @demo.hometownseed.org (fictional names). The shared
+--     demo account is demo@demo.hometownseed.org (button on the sign-in page).
+--   * Demo campaigns: campaigns.is_demo = true, in Dutchess County, NY ZIPs
+--     12501 (Amenia), 12592 (Wassaic), 12522 (Dover Plains), 12545 (Millbrook).
+--   * demo_notable_pledges: publicly reported pledges to Trump Accounts by
+--     billionaires and others (real, sourced), shown as reference data.
+-- Loaded by web/scripts/migrate.mjs unless DEMO_DATA=0. Safe to re-run.
+-- ============================================================================
+
+-- People ------------------------------------------------------------------------
+insert into app_users (id, email, display_name, email_verified_at, has_nonprofit) values
+ ('de000000-0000-4000-8000-000000000001', 'demo@demo.hometownseed.org',        'Demo Organizer',   now(), false),
+ ('de000000-0000-4000-8000-000000000002', 'maria.alvarez@demo.hometownseed.org', 'Maria Alvarez',  now(), false),
+ ('de000000-0000-4000-8000-000000000003', 'james.whitfield@demo.hometownseed.org','James Whitfield', now(), true),
+ ('de000000-0000-4000-8000-000000000004', 'priya.raman@demo.hometownseed.org',  'Priya Raman',      now(), false),
+ ('de000000-0000-4000-8000-000000000005', 'tom.oconnell@demo.hometownseed.org', 'Tom O''Connell',   now(), false),
+ ('de000000-0000-4000-8000-000000000006', 'keisha.brooks@demo.hometownseed.org','Keisha Brooks',    now(), false),
+ ('de000000-0000-4000-8000-000000000007', 'ben.hartley@demo.hometownseed.org',  'Ben Hartley',      now(), false),
+ ('de000000-0000-4000-8000-000000000008', 'rosa.delgado@demo.hometownseed.org', 'Rosa Delgado',     now(), false),
+ ('de000000-0000-4000-8000-000000000009', 'sam.okafor@demo.hometownseed.org',   'Sam Okafor',       now(), false),
+ ('de000000-0000-4000-8000-000000000010', 'linda.chen@demo.hometownseed.org',   'Linda Chen',       now(), false)
+on conflict do nothing;
+
+-- Giving profiles (for the match deck) -------------------------------------------
+insert into giving_profiles (user_id, home_zip, radius_miles, target_zips, gift_types, budget_cents, per_child_cents,
+                             min_age, max_age, income_focus, open_to_match, bio, anchor_lat, anchor_lon)
+select v.user_id::uuid, v.home_zip, v.radius, v.targets::char(5)[], v.gifts::text[], v.budget, v.pc, v.min_age, v.max_age, v.focus, true, v.bio,
+       (select avg(lat) from zcta_stats z where z.zcta = any(v.targets::char(5)[])),
+       (select avg(lon) from zcta_stats z where z.zcta = any(v.targets::char(5)[]))
+from (values
+ ('de000000-0000-4000-8000-000000000001', '12501', 25, '{12501,12592,12522}', '{cash}',        500000,  2500, 0, 17, 'any',             'Running the demo campaigns for the Harlem Valley.'),
+ ('de000000-0000-4000-8000-000000000002', '12501', 15, '{12501}',             '{cash}',        100000,  2500, 0, 17, 'any',             'Grew up in Amenia; my kids go to Webutuck schools.'),
+ ('de000000-0000-4000-8000-000000000003', '12545', 30, '{12545,12501}',       '{cash,daf}',   2500000,  5000, 0, 17, 'any',             'Board member of a local community foundation.'),
+ ('de000000-0000-4000-8000-000000000004', '12522', 20, '{12522}',             '{cash}',         50000,  3000, 0, 10, 'below_threshold', 'Teacher in Dover Plains. Want every kid to start with something.'),
+ ('de000000-0000-4000-8000-000000000005', '12592', 10, '{12592,12501}',       '{cash}',         25000,  2500, 0, 17, 'any',             'Wassaic volunteer firefighter.'),
+ ('de000000-0000-4000-8000-000000000006', '12545', 25, '{12545}',             '{stock}',       300000,  2500, 6, 17, 'any',             'Giving appreciated stock to Millbrook kids.'),
+ ('de000000-0000-4000-8000-000000000007', '12501', 40, '{12501,12522,12592}', '{cash,stock}',  750000,  2500, 0, 17, 'lowest',          'Small business owner on Route 22.'),
+ ('de000000-0000-4000-8000-000000000008', '12522', 15, '{12522,12592}',       '{cash}',         20000,  2000, 0, 5,  'any',             'New mom in Dover Plains.'),
+ ('de000000-0000-4000-8000-000000000009', '12545', 50, '{12545,12522}',       '{daf}',        1000000,  4000, 0, 17, 'any',             'Weekend Millbrook resident with a donor-advised fund.'),
+ ('de000000-0000-4000-8000-000000000010', '12592', 30, '{12592,12545}',       '{cash}',         60000,  2500, 0, 17, 'below_threshold', 'Retired nurse, Wassaic.')
+) as v(user_id, home_zip, radius, targets, gifts, budget, pc, min_age, max_age, focus, bio)
+on conflict (user_id) do nothing;
+
+-- Campaigns ---------------------------------------------------------------------------
+insert into campaigns (id, slug, name, description, owner_id, mode, goal_type, goal_cents, goal_per_child_cents,
+                       open_to_matching, invite_friends, is_demo) values
+ ('de000000-0000-4000-9000-000000000001', 'demo-amenia-kids-fund', 'Amenia Kids Fund',
+  'Seed every child''s Trump Account in Amenia. (Demo campaign.)', 'de000000-0000-4000-8000-000000000001',
+  'match', 'per_child', 10000, 2500, true, true, true),
+ ('de000000-0000-4000-9000-000000000002', 'demo-harlem-valley-seed', 'Harlem Valley Seed',
+  'Amenia, Wassaic and Dover Plains together along Route 22. (Demo campaign.)', 'de000000-0000-4000-8000-000000000001',
+  'match', 'total', 5000000, null, true, false, true),
+ ('de000000-0000-4000-9000-000000000003', 'demo-millbrook-childrens-accounts', 'Millbrook Children''s Accounts',
+  'Neighbors pooling for Millbrook kids. (Demo campaign.)', 'de000000-0000-4000-8000-000000000003',
+  'match', 'total', 3000000, null, true, true, true),
+ ('de000000-0000-4000-9000-000000000004', 'demo-dover-plains-starts-here', 'Dover Plains Starts Here',
+  '$30 for every child in Dover Plains. (Demo campaign.)', 'de000000-0000-4000-8000-000000000004',
+  'match', 'per_child', 10000, 3000, true, false, true),
+ ('de000000-0000-4000-9000-000000000005', 'demo-wassaic-hamlet-fund', 'Wassaic Hamlet Fund',
+  'A small hamlet with a big heart. (Demo campaign.)', 'de000000-0000-4000-8000-000000000005',
+  'solo', 'open', null, null, false, false, true)
+on conflict do nothing;
+
+insert into campaign_members (campaign_id, user_id, role) values
+ ('de000000-0000-4000-9000-000000000001', 'de000000-0000-4000-8000-000000000001', 'owner'),
+ ('de000000-0000-4000-9000-000000000001', 'de000000-0000-4000-8000-000000000002', 'organizer'),
+ ('de000000-0000-4000-9000-000000000002', 'de000000-0000-4000-8000-000000000001', 'owner'),
+ ('de000000-0000-4000-9000-000000000003', 'de000000-0000-4000-8000-000000000003', 'owner'),
+ ('de000000-0000-4000-9000-000000000003', 'de000000-0000-4000-8000-000000000006', 'organizer'),
+ ('de000000-0000-4000-9000-000000000004', 'de000000-0000-4000-8000-000000000004', 'owner'),
+ ('de000000-0000-4000-9000-000000000005', 'de000000-0000-4000-8000-000000000005', 'owner')
+on conflict do nothing;
+
+insert into campaign_zips (campaign_id, zcta) values
+ ('de000000-0000-4000-9000-000000000001', '12501'),
+ ('de000000-0000-4000-9000-000000000002', '12501'), ('de000000-0000-4000-9000-000000000002', '12592'),
+ ('de000000-0000-4000-9000-000000000002', '12522'),
+ ('de000000-0000-4000-9000-000000000003', '12545'),
+ ('de000000-0000-4000-9000-000000000004', '12522'),
+ ('de000000-0000-4000-9000-000000000005', '12592')
+on conflict do nothing;
+
+insert into pledges (id, campaign_id, user_id, donor_name, donor_email, amount_cents, message) values
+ ('de000000-0000-4000-a000-000000000001', 'de000000-0000-4000-9000-000000000001', 'de000000-0000-4000-8000-000000000002', 'Maria Alvarez',   null,  25000, 'For the kids on my street.'),
+ ('de000000-0000-4000-a000-000000000002', 'de000000-0000-4000-9000-000000000001', 'de000000-0000-4000-8000-000000000007', 'Ben Hartley',     null, 100000, null),
+ ('de000000-0000-4000-a000-000000000003', 'de000000-0000-4000-9000-000000000002', 'de000000-0000-4000-8000-000000000007', 'Ben Hartley',     null, 250000, 'Route 22 strong.'),
+ ('de000000-0000-4000-a000-000000000004', 'de000000-0000-4000-9000-000000000002', 'de000000-0000-4000-8000-000000000010', 'Linda Chen',      null,  30000, null),
+ ('de000000-0000-4000-a000-000000000005', 'de000000-0000-4000-9000-000000000003', 'de000000-0000-4000-8000-000000000009', 'Sam Okafor',      null, 500000, 'From our donor-advised fund.'),
+ ('de000000-0000-4000-a000-000000000006', 'de000000-0000-4000-9000-000000000003', 'de000000-0000-4000-8000-000000000006', 'Keisha Brooks',   null, 150000, null),
+ ('de000000-0000-4000-a000-000000000007', 'de000000-0000-4000-9000-000000000004', 'de000000-0000-4000-8000-000000000008', 'Rosa Delgado',    null,  10000, 'For the babies.'),
+ ('de000000-0000-4000-a000-000000000008', 'de000000-0000-4000-9000-000000000004', 'de000000-0000-4000-8000-000000000004', 'Priya Raman',     null,  20000, null),
+ ('de000000-0000-4000-a000-000000000009', 'de000000-0000-4000-9000-000000000005', 'de000000-0000-4000-8000-000000000005', 'Tom O''Connell',  null,  15000, null)
+on conflict do nothing;
+
+-- A fictional nonprofit represented by a demo person (for the Qualified Donor choice).
+-- EIN 00-0000001 is a placeholder, not a real organization.
+insert into nonprofits (id, ein, name, city, state, zip, subsection, deductible, verified_source, created_by) values
+ ('de000000-0000-4000-b000-000000000001', '000000001', 'Harlem Valley Community Fund (demo)', 'Millbrook', 'NY', '12545', '03', true, 'self',
+  'de000000-0000-4000-8000-000000000003')
+on conflict do nothing;
+insert into nonprofit_reps (nonprofit_id, user_id, title, phone) values
+ ('de000000-0000-4000-b000-000000000001', 'de000000-0000-4000-8000-000000000003', 'Board Chair', '(845) 555-0100')
+on conflict do nothing;
+
+-- Someone already liked the demo account's campaign, so the demo has a match to show.
+insert into swipes (user_id, target_kind, target_id, decision) values
+ ('de000000-0000-4000-8000-000000000003', 'campaign', 'de000000-0000-4000-9000-000000000001', 'like'),
+ ('de000000-0000-4000-8000-000000000007', 'person',   'de000000-0000-4000-8000-000000000001', 'like')
+on conflict do nothing;
+
+-- Publicly reported pledges to Trump Accounts (reference data, as of late October 2026) --
+create table if not exists demo_notable_pledges (
+    id           text primary key,
+    donor        text not null,
+    amount       text not null,          -- as reported
+    per_child    text,
+    form         text not null,          -- cash | stock
+    scope        text not null,          -- national | state | employees | other
+    state        char(2),                -- for state pledges
+    min_age      smallint,
+    max_age      smallint,
+    income_max   integer,                -- ZIP median household income must be below this
+    who          text not null,
+    announced    text,
+    source_name  text not null,
+    source_url   text not null,
+    sort         smallint not null default 100
+);
+alter table demo_notable_pledges enable row level security;
+insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, sort) values
+ ('dell', 'Michael & Susan Dell', '$6.25 billion', '$250', 'cash', 'national', null, 0, 10, 150000,
+  'The first 25 million children age 10 and under who live in ZIP codes with median household income below $150,000.',
+  'December 2025', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 10),
+ ('musk', 'Elon Musk', 'About $10.5 billion (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', null, 0, 17, null,
+  'Every child in the U.S., per the announcement; Musk hasn''t said which children qualify or when (expected 2027). No Texas-specific component has been reported.',
+  'October 19, 2026', 'Al Jazeera', 'https://aljazeera.com/news/2026/10/21/musk-pledges-10bn-in-spacex-shares-for-us-children-who-really-gains', 20),
+ ('shotwell', 'Gwynne Shotwell & husband', 'About $320 million (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', 'TX', 11, 17, null,
+  'More than 2 million children ages 11 to 17, with extra emphasis on lower-income families near their central Texas home.',
+  'July 2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 30),
+ ('dalio', 'Ray & Barbara Dalio (Dalio Philanthropies)', '$75 million', '$250', 'cash', 'state', 'CT', 0, 9, 150000,
+  'About 300,000 Connecticut children under 10 in ZIP codes with median income under $150,000.',
+  'December 2025', 'Fortune', 'https://www.fortune.com/2025/12/17/ray-dalio-75-million-donation-trump-accounts-treasuy', 40),
+ ('gerstner', 'Brad Gerstner (Altimeter Capital, Invest America)', '$250 per child', '$250', 'cash', 'state', 'IN', 0, 5, null,
+  'Every child age 5 and under with a Trump Account in Indiana.',
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 50),
+ ('freedman', 'Ed Freedman (Stable Road Foundation)', '$250 per child', '$250', 'cash', 'state', 'HI', 11, 17, null,
+  'Foster children ages 11 to 17 in Hawaii.',
+  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 60),
+ ('minaj', 'Nicki Minaj', '$150,000–$300,000 (reported)', null, 'cash', 'other', null, null, null, null,
+  'Newborns of her fans; eligibility not specified.',
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 70),
+ ('hamm', 'Harold Hamm (Continental Resources)', 'Not stated', null, 'cash', 'employees', null, null, null, null,
+  'Children of Continental Resources employees.',
+  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 80),
+ ('employers', 'Employers (Bank of America, BlackRock, BNY, Charles Schwab, Dell, IBM, Intel, JPMorgan Chase, Nvidia, Visa, Wells Fargo and others)',
+  'Matching contributions', null, 'cash', 'employees', null, null, null, null,
+  'Employees'' children, typically matching the government''s $1,000 seed.',
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 90)
+on conflict (id) do update set donor = excluded.donor, amount = excluded.amount, per_child = excluded.per_child, form = excluded.form,
+  scope = excluded.scope, state = excluded.state, min_age = excluded.min_age, max_age = excluded.max_age, income_max = excluded.income_max,
+  who = excluded.who, announced = excluded.announced, source_name = excluded.source_name, source_url = excluded.source_url, sort = excluded.sort;

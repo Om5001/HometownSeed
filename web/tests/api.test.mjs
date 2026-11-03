@@ -352,3 +352,57 @@ test("leaving a coalition and deleting a campaign", { skip }, async () => {
   assert.equal((await bo(`/api/campaigns/${b.data.slug}/delete`, { confirm: "delete" })).status, 200);
   assert.equal((await bo(`/api/campaigns/${b.data.slug}`)).status, 404);
 });
+
+test("nonprofits: register by EIN, choose as Qualified Donor, sign Section 4", { skip }, async () => {
+  const org = client(), rep = client(), out = client();
+  await signup(org, "Una"); await signup(out, "Vic");
+  const r = await rep("/api/auth/signup", { email: `wes-${stamp}@example.com`, name: "Wes", password: PW, hasNonprofit: true });
+  assert.equal(r.data.user.has_nonprofit, true);
+  await rep("/api/auth/verify", { token: tokenOf(r.data.verification.devLink) });
+
+  // lookup and register (IRS file)
+  const look = await rep("/api/nonprofits/lookup?ein=00-0000123");
+  assert.equal(look.data.org.source, "irs"); assert.equal(look.data.org.is501c3, true);
+  assert.equal((await rep("/api/nonprofits", { ein: "000000456", title: "President" })).status, 400, "not a 501(c)(3)");
+  assert.equal((await rep("/api/nonprofits", { ein: "000000123" })).status, 400, "title required");
+  const reg = await rep("/api/nonprofits", { ein: "00-0000123", title: "Executive Director", phone: "718-555-0199" });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data)); assert.equal(reg.data.verified, "irs");
+  assert.match((await rep("/account")).data, /501\(c\)\(3\)/);
+  assert.match((await out("/nonprofits")).data, /TEST COMMUNITY FOUNDATION/);
+
+  // coalition with the rep as a donor; organizer picks the rep's nonprofit
+  const c = await org("/api/campaigns", { name: `Np Run ${stamp}`, zips: ["11234"], goalType: "open" });
+  await rep(`/api/campaigns/${c.data.slug}/pledges`, { amountCents: 40000 });
+  const conf = await org(`/api/campaigns/${c.data.slug}/coalition`, {});
+  const poolId = conf.data.poolId;
+  assert.equal((await rep(`/api/coalitions/${poolId}/donor`, { nonprofitId: reg.data.id })).status, 403, "donors can't choose");
+  const ch = await org(`/api/coalitions/${poolId}/donor`, { nonprofitId: reg.data.id });
+  assert.equal(ch.data.newAgreement, true);
+  const page = await org(`/coalitions/${poolId}`);
+  assert.match(page.data, /TEST COMMUNITY FOUNDATION, represented in this coalition by Wes/);
+  const docId = (page.data.match(/"documentId\\?":\\?"([0-9a-f-]{36})/) || [])[1];
+  await org(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Una U", agree: true });
+  assert.equal((await rep(`/api/coalitions/${poolId}/approve`, { documentId: docId, name: "Wes W", agree: true })).data.status, "approved");
+
+  // the rep signs Section 4 before it can be sent
+  assert.match((await org(`/api/coalitions/${poolId}/submit`, {})).data.error, /needs to sign Section 4/);
+  assert.equal((await org(`/api/coalitions/${poolId}/donor-sign`, { name: "Una", certify: true })).status, 403);
+  assert.equal((await rep(`/api/coalitions/${poolId}/donor-sign`, { name: "Someone", certify: true })).status, 400);
+  assert.equal((await rep(`/api/coalitions/${poolId}/donor-sign`, { name: "Wes", certify: true })).status, 200);
+  const sent = await org(`/api/coalitions/${poolId}/submit`, {});
+  assert.match(sent.data.reference, /^MOCK-TA-/);
+  const pdf = await fetch(BASE + `/api/coalitions/${poolId}/application/pdf`, { headers: { cookie: rep.cookie() } });
+  assert.equal(pdf.status, 200);
+});
+
+test("demo account (temporary)", { skip }, async () => {
+  const d = client();
+  const r = await d("/api/auth/demo", {});
+  if (r.status === 404) return;   // demo data not loaded (CI runs without it)
+  assert.equal(r.status, 200);
+  assert.equal(r.data.user.is_demo, true);
+  assert.match((await d("/me")).data, /Amenia Kids Fund/);
+  assert.equal((await d("/api/account/delete", { password: "x", confirm: "DELETE" })).status, 403);
+  assert.equal((await d("/api/account/password", { current: "x", next: "another long phrase" })).status, 403);
+  assert.equal((await client()("/api/auth/signup", { email: "demo@demo.hometownseed.org", name: "X", password: PW })).status, 400);
+});

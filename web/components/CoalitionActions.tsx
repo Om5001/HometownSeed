@@ -53,3 +53,52 @@ export function LeaveCoalition({ poolId, consequences, backTo }: { poolId: strin
     </div>
   );
 }
+
+type DonorOpt = { id: string; name: string; ein: string; city: string | null; state: string | null; verified_source: string; rep_name: string };
+
+/** Organizers pick who applies to Treasury: Hometown Seed's 501(c)(3), or a member's nonprofit. */
+export function DonorChooser({ poolId, current, options, platformName, confirmed }: { poolId: string; current: string | null; options: DonorOpt[]; platformName: string; confirmed: boolean }) {
+  const router = useRouter();
+  const [sel, setSel] = useState<string | null>(current); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const fmtEin = (e: string) => e.slice(0, 2) + "-" + e.slice(2);
+  const opt = (id: string | null, title: React.ReactNode, sub: string) => (
+    <label className={"donor-opt" + (sel === id ? " on" : "")} key={id ?? "platform"}>
+      <input type="radio" name="donor" checked={sel === id} onChange={() => setSel(id)} />
+      <span><b>{title}</b><br /><small className="muted">{sub}</small></span>
+    </label>
+  );
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {opt(null, platformName, "Hometown Seed's own 501(c)(3). Its representative signs Treasury's application.")}
+      {options.map((o) => opt(o.id, <>{o.name} {o.verified_source !== "self" ? <span className="np-badge">✓ verified</span> : <span className="np-badge self">self-reported</span>}</>,
+        `EIN ${fmtEin(o.ein)}${o.city ? ` · ${o.city}, ${o.state}` : ""} · ${o.rep_name} signs the application for it`))}
+      {!options.length && <p className="small muted">Nobody in this coalition has added a nonprofit yet. Members who represent a 501(c)(3) can add it on their profile; it will show up here. <a href="/nonprofits">Find a nonprofit</a></p>}
+      <button className="btn btn-green btn-sm" style={{ alignSelf: "flex-start" }} disabled={busy || sel === current} onClick={async () => {
+        setBusy(true); setErr("");
+        try { await post(`/api/coalitions/${poolId}/donor`, { nonprofitId: sel }); router.refresh(); }
+        catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+      }}>{busy ? "Saving…" : "Use this Qualified Donor"}</button>
+      {confirmed && <p className="small muted">Changing it draws up a new version of the agreement for everyone to sign.</p>}
+      {err && <p className="err">{err}</p>}
+    </div>
+  );
+}
+
+/** The member nonprofit's representative certifies and signs Section 4 of Treasury's application. */
+export function DonorSignForm({ poolId, repName, org }: { poolId: string; repName: string; org: string }) {
+  const router = useRouter();
+  const [ok, setOk] = useState(false); const [name, setName] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <label className="check"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
+        <span>I certify under penalties of perjury that I am an authorized representative of {org}, with authority to make these representations and this contribution on its behalf.</span></label>
+      <div className="addrow"><input className="input" placeholder={repName} value={name} onChange={(e) => setName(e.target.value)} aria-label="Type your full name to sign" />
+        <button className="btn btn-green btn-sm" disabled={!ok || busy} onClick={async () => {
+          setBusy(true); setErr("");
+          try { await post(`/api/coalitions/${poolId}/donor-sign`, { name, certify: ok }); router.refresh(); }
+          catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+        }}>{busy ? "Signing…" : "Sign Section 4"}</button></div>
+      {err && <p className="err">{err}</p>}
+    </div>
+  );
+}

@@ -91,7 +91,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
               </div>
               <div className="dhead">
                 <span className={"mono-tile " + (c.kind === "campaign" ? "t0" : "t1")}>{initials(c.title)}</span>
-                <div style={{ minWidth: 0 }}><h3>{c.title}</h3><p className="muted small">{c.subtitle}</p></div>
+                <div style={{ minWidth: 0 }}><h3>{c.title}</h3><p className="muted small">{c.subtitle}</p>{c.nonprofit && <span className="np-badge" title="Represents a 501(c)(3)">✓ 501(c)(3): {c.nonprofit}</span>}</div>
               </div>
               <div className="dstats">
                 <div><span className="num">{c.miles === null ? "—" : c.miles < 1 ? "<1" : fmt(c.miles)}</span><small>miles away</small></div>

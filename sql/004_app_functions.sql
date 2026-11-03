@@ -35,7 +35,9 @@ returns table (
     lat              double precision,   -- kid-weighted centroid
     lon              double precision
 )
-language sql stable as $$
+-- rows 1: it always returns one row. Without this hint the planner assumes 1,000 rows,
+-- overestimates every query that uses it, and turns on JIT compilation (seconds per call).
+language sql stable rows 1 as $$
     with input as (
         select distinct coalesce(x.zcta, lpad(trim(z), 5, '0')::char(5)) as zcta, lpad(trim(z), 5, '0') as asked
         from unnest(p_zips) z
@@ -148,7 +150,7 @@ returns table (
     same_age_class        boolean,
     reasons               text[]
 )
-language sql stable as $$
+language sql stable set jit = off as $$
     with me as (select * from area_stats(p_zips, p_min_age, p_max_age)),
     me_z as (select unnest(me.zctas)::char(5) as zcta from me),
     excluded_pool as (select pool_id from campaigns where id = p_exclude and pool_id is not null),

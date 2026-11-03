@@ -4,12 +4,14 @@ import { ZipSearch } from "@/components/ZipSearch";
 import { CampaignCard } from "@/components/CampaignCard";
 import { getRules, homeStats, listCampaigns } from "@/lib/queries";
 import { fmt, moneyC } from "@/lib/format";
+import { notablePledges } from "@/lib/demo";                         // TEMPORARY demo
+import { NotablePledges } from "@/components/demo/NotablePledges";  // TEMPORARY demo
 
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; deleted?: string }> }) {
   const { q, deleted } = await searchParams;
-  const [stats, camps, rules] = await Promise.all([homeStats(), listCampaigns({ q, limit: 12 }), getRules()]);
+  const [stats, camps, rules, notable] = await Promise.all([homeStats(), listCampaigns({ q, limit: 12 }), getRules(), notablePledges()]);
   return (
     <main>
       {deleted && <div className="wrap" style={{ paddingTop: 16 }}><p className="notice"><b>Your account was deleted.</b> Your sessions, profile and matches are gone. Thanks for being part of Hometown Seed.</p></div>}
@@ -58,12 +60,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
         </div>
       </section>
 
+      <div className="wrap"><NotablePledges pledges={notable} /></div>
+
       <section className="wrap section" id="how">
         <div className="section-head"><h2>How it works</h2></div>
         <div className="steps">
           <div className="step"><span className="n">Step 1</span><h3>Pick places and a goal</h3><p>Choose ZIP codes and how much you hope to raise. We show the estimated kids under 18 there (Census data) and what your goal means per child.</p></div>
           <div className="step"><span className="n">Step 2</span><h3>Match up or invite friends</h3><p>Pile on with campaigns already funding the same kids, or pool with ones at a similar amount per child until the area reaches {fmt(rules.min_beneficiaries)} kids, the threshold the law sets.</p></div>
-          <div className="step"><span className="n">Step 3</span><h3>A charity sends it to Treasury</h3><p>When an area is ready, a partner charity submits one general funding contribution. Treasury splits it evenly into every eligible child&apos;s account.</p></div>
+          <div className="step"><span className="n">Step 3</span><h3>A 501(c)(3) sends it to Treasury</h3><p>When an area is ready, a nonprofit (a member&apos;s own, or Hometown Seed&apos;s) submits one general funding contribution. Treasury splits it evenly into every eligible child&apos;s account.</p></div>
         </div>
       </section>
     </main>

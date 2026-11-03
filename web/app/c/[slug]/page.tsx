@@ -17,13 +17,12 @@ type Pool = { id: string; name: string; zip_count: number; kids: number; kids_u1
 
 export default async function CampaignPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ new?: string }> }) {
   const { slug } = await params; const { new: isNew } = await searchParams;
-  const data = await getCampaign(slug);
+  const [data, user, rules] = await Promise.all([getCampaign(slug), getUser(), getRules()]);
   if (!data) notFound();
   const { campaign: c, zips, pledges, team, incoming, outgoing } = data;
   const pool = data.pool as Pool | null;
-  const [user, rules] = await Promise.all([getUser(), getRules()]);
-  const role = await memberRole(c.id, user?.id);
-  const [matches, st] = await Promise.all([
+  const [role, matches, st] = await Promise.all([
+    memberRole(c.id, user?.id),
     findMatches(zips.map((z) => z.zcta), c.goal ?? 0, c.min_age, c.max_age, c.id, 6),
     coalitionState(c, user?.id),
   ]);

@@ -20,8 +20,8 @@ const STEPS = [
   { s: "funded", t: "Money sent" }, { s: "distributed", t: "In kids' accounts" },
 ];
 
-export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholders }: {
-  poolId: string; status: string; sub: Sub; messages: Msg[]; mock: boolean; placeholders: string[];
+export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholders, donorSign }: {
+  poolId: string; status: string; sub: Sub; messages: Msg[]; mock: boolean; placeholders: string[]; donorSign?: React.ReactNode;
 }) {
   const router = useRouter();
   const a = sub?.application;
@@ -46,15 +46,22 @@ export function TreasuryPanel({ poolId, status, sub, messages, mock, placeholder
           <span className="dot">{i < idx || status === "distributed" ? "✓" : i + 1}</span><div><b>{x.t}</b></div></li>)}
       </ol>
       {status === "rejected" && <p className="notice"><b>Treasury didn&apos;t approve the application.</b> Check the message below, adjust it and send it again. To change who&apos;s in the coalition, anyone can still leave, which draws up a new agreement for the others to sign.</p>}
-      <p className="hint">This is Treasury&apos;s <i>Trump Accounts Qualified Class Contribution Application</i> (draft of June 10, 2026), filled in from your signed agreement. <b>{s1?.entity_name ?? "Hometown Seed's nonprofit"}</b>, a 501(c)(3), is the Qualified Donor: it receives the coalition&apos;s gifts, applies, and sends one contribution. Everyone in the coalition is listed with their signature in Attachment B. The draft form only lists nationwide, birth-year and state classes and says ZIP-code areas need a separate request, so your ZIP codes and kid counts go in Attachment A.</p>
-      {placeholders.length > 0 && <p className="notice" style={{ marginTop: 10 }}><b>Nonprofit details still to fill in:</b> {placeholders.join(", ")}. Set them in <code>web/lib/platform.ts</code> (or the ORG_ variables in <code>.env.local</code>). Until then the PDF is marked as a draft{mock ? "" : " and can't be sent"}.</p>}
+      <p className="hint">This is Treasury&apos;s <i>Trump Accounts Qualified Class Contribution Application</i> (draft of June 10, 2026), filled in from your signed agreement. <b>{s1?.entity_name ?? "The coalition's nonprofit"}</b>, a 501(c)(3), is the Qualified Donor: it receives the coalition&apos;s gifts, applies, and sends one contribution. Everyone in the coalition is listed with their signature in Attachment B. The draft form only lists nationwide, birth-year and state classes and says ZIP-code areas need a separate request, so your ZIP codes and kid counts go in Attachment A.</p>
+      {placeholders.length > 0 && <p className="notice" style={{ marginTop: 10 }}><b>Nonprofit details still to fill in:</b> {placeholders.join(", ")}. {a?.donor_kind === "member" ? <>The representative can add them to the nonprofit on their profile.</> : <>Set them in <code>web/lib/platform.ts</code> (or the ORG_ variables in <code>.env.local</code>).</>} Until then the PDF is marked as a draft{mock ? "" : " and can't be sent"}.</p>}
 
       {a && (
         <div className="appsum">
           <div><span>Section 1 · Qualified Donor</span><b>{s1!.entity_name}</b><small>501(c)(3) · EIN {s1!.ein} · {s1!.entity_address}</small><small>Authorized representative: {s1!.rep_name}, {s1!.rep_title} · {s1!.rep_email}</small></div>
           <div><span>Section 2 · Contribution</span><b>{money(a.section2.amount_cents)}</b><small>Qualified Geographic Area: {a.attachment_a.zip_codes.length} ZIP code{a.attachment_a.zip_codes.length === 1 ? "" : "s"}, about {a.attachment_a.est_beneficiaries_in_class.toLocaleString("en-US")} kids, ages {a.attachment_a.ages}</small></div>
-          <div><span>Section 4 · Signature</span><b>/s/ {a.section4.signature}</b><small>for the Qualified Donor, {a.section4.date}</small></div>
+          <div><span>Section 4 · Signature</span>{a.section4.signature ? <><b>/s/ {a.section4.signature}</b><small>for the Qualified Donor, {a.section4.date}</small></> : <><b>Not signed yet</b><small>{a.section1.rep_name} signs for {a.section1.entity_name}</small></>}</div>
           <div><span>Attachment B · Coalition</span><b>{a.attachment_b.people.length} {a.attachment_b.people.length === 1 ? "person" : "people"} signed</b><small>{a.attachment_b.people.map((p) => p.name).join(", ")}</small></div>
+        </div>
+      )}
+
+      {donorSign && (
+        <div className="stack" style={{ marginTop: 14 }}>
+          <h3>Section 4: Signature of the Qualified Donor</h3>
+          {donorSign}
         </div>
       )}
 

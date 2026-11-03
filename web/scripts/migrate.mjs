@@ -25,6 +25,14 @@ const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {}, ssl: /ss
 try {
   for (const f of files) await sql.unsafe(fs.readFileSync(path.join(dir, f), "utf8")).simple();
   console.log(`Database is up to date (${files.join(", ")})`);
+  // TEMPORARY demo data (sample campaigns, demo account, notable pledges). DEMO_DATA=0 skips it;
+  // sql/demo/remove_demo.sql deletes it.
+  if (process.env.DEMO_DATA !== "0") {
+    try {
+      await sql.unsafe(fs.readFileSync(path.join(dir, "demo", "seed_demo.sql"), "utf8")).simple();
+      console.log("Demo data loaded (set DEMO_DATA=0 to skip)");
+    } catch (e) { console.warn("Demo data skipped:", e.message); }
+  }
 } catch (e) {
   console.error("Database setup failed:", e.message);
   process.exitCode = 1;

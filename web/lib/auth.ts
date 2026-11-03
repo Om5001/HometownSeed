@@ -1,3 +1,4 @@
+import { cache } from "react";
 /**
  * Accounts: sign-up, sign-in, sessions, email verification, password reset, deletion.
  *
@@ -25,8 +26,11 @@ import { hash as argonHash, verify as argonVerify } from "@node-rs/argon2";
 import { db } from "./db";
 import { resetPasswordMessage, sendEmail, verifyEmailMessage, type SendResult } from "./email";
 
-export type User = { id: string; email: string; display_name: string; email_verified: boolean };
+export type User = { id: string; email: string; display_name: string; email_verified: boolean; has_nonprofit: boolean; is_demo: boolean };
 const COOKIE = "hs_session";
+/** Temporary demo accounts (see sql/demo). Can't be signed up for or signed into with a password. */
+export const DEMO_DOMAIN = "demo.hometownseed.org";
+export const DEMO_EMAIL = "demo@" + DEMO_DOMAIN;
 const SESSION_DAYS = 30;
 const ARGON = { memoryCost: 65536, timeCost: 3, parallelism: 4 } as const; // library default algorithm = Argon2id
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
@@ -95,6 +99,20 @@ async function throttle(email: string, ip: string): Promise<number> {
   return r.by_email >= 4 ? Math.min(1000 * 2 ** (r.by_email - 4), 15000) : 0;
 }
 
+/** TEMPORARY: sign in as the shared demo account (button on the sign-in page). Remove with sql/demo. */
+export async function signInDemo(): Promise<User> {
+  if (process.env.DEMO_ACCOUNT === "0") throw new AuthError(404, "The demo account is turned off.");
+  const [u] = await db()<User[]>`select ${userCols(db())} from app_users where email = ${DEMO_EMAIL}`;
+  if (!u) throw new AuthError(404, "The demo account isn't set up. Restart the site (npm run dev) to load the demo data.");
+  await startSession(u.id);
+  return u;
+}
+
+/** The shared demo account can look around but not lock others out of it. */
+export function assertNotDemo(user: User) {
+  if (user.is_demo) throw new AuthError(403, "The demo account can't change its password or be deleted.");
+}
+
 async function startSession(userId: string) {
   const token = crypto.randomBytes(32).toString("base64url");
   const ua = (await headers()).get("user-agent")?.slice(0, 200) ?? null;
@@ -121,13 +139,15 @@ async function consumeToken(token: string, purpose: string): Promise<string | nu
   return t?.user_id ?? null;
 }
 
-const userCols = (sql: ReturnType<typeof db>) => sql`id, email, display_name, (email_verified_at is not null) as email_verified`;
+const userCols = (sql: ReturnType<typeof db>) => sql`id, email, display_name, (email_verified_at is not null) as email_verified,
+  has_nonprofit, (email like ${"%@" + DEMO_DOMAIN}) as is_demo`;
 
 // --- Sign-up / sign-in -------------------------------------------------------------
 
-export async function signUp(email: string, password: string, name: string, baseUrl: string): Promise<{ user: User; email: SendResult }> {
+export async function signUp(email: string, password: string, name: string, baseUrl: string, hasNonprofit = false): Promise<{ user: User; email: SendResult }> {
   const clean = email.trim().toLowerCase();
   if (!validEmail(clean)) throw new AuthError(400, "Enter a valid email.");
+  if (clean.endsWith("@" + DEMO_DOMAIN)) throw new AuthError(400, "That email address is reserved.");
   const display = name.trim().slice(0, 60);
   if (display.length < 2) throw new AuthError(400, "Enter your name.");
   const bad = passwordProblem(password, clean); if (bad) throw new AuthError(400, bad);
@@ -135,8 +155,8 @@ export async function signUp(email: string, password: string, name: string, base
   const sql = db();
   // A legacy prototype account with no password can be claimed; it still has to verify its email.
   const [u] = await sql<User[]>`
-    insert into app_users (email, display_name, password_hash, password_changed_at) values (${clean}, ${display}, ${hash}, now())
-    on conflict ((lower(email))) do update set password_hash = excluded.password_hash, display_name = excluded.display_name,
+    insert into app_users (email, display_name, password_hash, password_changed_at, has_nonprofit) values (${clean}, ${display}, ${hash}, now(), ${hasNonprofit})
+    on conflict ((lower(email))) do update set password_hash = excluded.password_hash, display_name = excluded.display_name, has_nonprofit = excluded.has_nonprofit,
       password_changed_at = now(), email_verified_at = null
       where app_users.password_hash is null
     returning ${userCols(sql)}`;
@@ -163,19 +183,20 @@ export async function signIn(email: string, password: string): Promise<User> {
   }
   if (res.rehash) await sql`update app_users set password_hash = ${await hashPassword(password)} where id = ${u.id}`;
   await startSession(u.id);
-  return { id: u.id, email: u.email, display_name: u.display_name, email_verified: u.email_verified };
+  return { id: u.id, email: u.email, display_name: u.display_name, email_verified: u.email_verified, has_nonprofit: u.has_nonprofit, is_demo: u.is_demo };
 }
 
-export async function getUser(): Promise<User | null> {
+/** The signed-in user. Cached per request, so the layout and the page share one lookup. */
+export const getUser = cache(async (): Promise<User | null> => {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token || token.length > 100) return null;
   const sql = db();
   const [u] = await sql<User[]>`
-    select ${sql`u.id, u.email, u.display_name, (u.email_verified_at is not null) as email_verified`}
+    select ${sql`u.id, u.email, u.display_name, (u.email_verified_at is not null) as email_verified, u.has_nonprofit`}, (u.email like ${"%@" + DEMO_DOMAIN}) as is_demo
     from sessions s join app_users u on u.id = s.user_id
     where s.token_hash = ${sha(token)} and s.expires_at > now()`;
   return u ?? null;
-}
+});
 
 /** For pages: send signed-out visitors to sign-in, then back. */
 export async function requirePageUser(next: string): Promise<User> {
@@ -192,6 +213,7 @@ export async function signOut() {
 }
 
 export async function signOutEverywhere(user: User) {
+  assertNotDemo(user);
   await db()`delete from sessions where user_id = ${user.id}`;
   (await cookies()).delete(COOKIE);
 }
@@ -254,6 +276,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
 }
 
 export async function changePassword(user: User, current: string, next: string) {
+  assertNotDemo(user);
   const sql = db();
   const [u] = await sql<{ password_hash: string | null }[]>`select password_hash from app_users where id = ${user.id}`;
   if (!(await verifyPassword(current, u?.password_hash ?? null)).ok) throw new AuthError(401, "Your current password is incorrect.");
@@ -266,6 +289,7 @@ export async function changePassword(user: User, current: string, next: string) 
 // --- Account deletion --------------------------------------------------------------
 
 export async function deleteAccount(user: User, password: string) {
+  assertNotDemo(user);
   const sql = db();
   const [u] = await sql<{ password_hash: string | null }[]>`select password_hash from app_users where id = ${user.id}`;
   if (u?.password_hash && !(await verifyPassword(password, u.password_hash)).ok) throw new AuthError(401, "That password is incorrect.");

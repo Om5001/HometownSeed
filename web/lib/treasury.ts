@@ -13,10 +13,11 @@
  * in Attachment A and no class box on the form is checked.
  */
 import crypto from "node:crypto";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";   // pdf-lib itself is loaded only when a PDF is made
 import { db } from "./db";
 import { HttpError } from "./http";
-import { PLATFORM, platformPlaceholders, type Platform } from "./platform";
+import { platformPlaceholders } from "./platform";
+import { getDonor, type Donor } from "./nonprofits";
 import type { User } from "./auth";
 import type { buildDocument, Person } from "./coalition";
 
@@ -27,7 +28,8 @@ export const mockTreasuryEnabled = () => process.env.MOCK_TREASURY !== "0";
 
 export type Application = {
   form: string; prepared_at: string; mock: boolean; placeholders: string[];
-  section1: Platform;
+  donor_kind?: Donor["kind"]; donor_rep_user_id?: string | null; donor_verified?: string;
+  section1: Omit<Donor, "kind" | "nonprofit_id" | "rep_user_id" | "verified_source">;
   section2: { amount_cents: number; class_type: "qualified_geographic_area"; note: string };
   section3: { recognition: boolean; recognition_name: string | null };
   section4: { representations: string[]; signed_name: string; signature: string; title: string; date: string; certified: boolean };
@@ -81,17 +83,29 @@ export async function prepareApplication(sql: Sql, poolId: string, recognition?:
   const [prev] = await sql<{ application: Application | null }[]>`
     select application from treasury_submissions where pool_id = ${poolId} order by created_at desc limit 1`;
   const rec = recognition ?? prev?.application?.section3 ?? { recognition: true, recognition_name: c.coalition.name };
+  const donor = await getDonor(sql, poolId);
+  const { kind, nonprofit_id: _n, rep_user_id, verified_source, ...section1 } = donor;
+  void _n;
+  const placeholders = kind === "platform" ? platformPlaceholders()
+    : Object.entries(section1).filter(([, v]) => /\[.*\]/.test(String(v))).map(([k]) => k.replace(/_/g, " "));
+  // A member nonprofit's representative signs Section 4 themselves; Hometown Seed's is signed for it.
+  const [sig] = kind === "member" ? await sql<{ donor_signature: { user_id: string; name: string; date: string } | null }[]>`
+    select donor_signature from treasury_submissions where pool_id = ${poolId} order by created_at desc limit 1` : [];
+  const signed = kind === "member" && sig?.donor_signature && sig.donor_signature.user_id === rep_user_id ? sig.donor_signature : null;
   const amount = c.money.total_pledged_cents;
   const today = new Date().toISOString().slice(0, 10);
   const app: Application = {
     form: "Trump Accounts Qualified Class Contribution Application (Treasury draft, updated June 10, 2026)",
-    prepared_at: new Date().toISOString(), mock: mockTreasuryEnabled(), placeholders: platformPlaceholders(),
-    section1: { ...PLATFORM },
+    prepared_at: new Date().toISOString(), mock: mockTreasuryEnabled(), placeholders,
+    donor_kind: kind, donor_rep_user_id: rep_user_id, donor_verified: verified_source,
+    section1,
     section2: { amount_cents: amount, class_type: "qualified_geographic_area",
       note: "Qualified Geographic Area class under IRC 530A(f)(3)(B). This class type is not listed on the draft form; details are in Attachment A, as the form's instructions direct." },
     section3: { recognition: rec.recognition, recognition_name: rec.recognition ? rec.recognition_name : null },
-    section4: { representations: REPRESENTATIONS, signed_name: PLATFORM.rep_name, signature: PLATFORM.rep_name, title: PLATFORM.rep_title,
-      date: today, certified: true },
+    section4: kind === "platform"
+      ? { representations: REPRESENTATIONS, signed_name: section1.rep_name, signature: section1.rep_name, title: section1.rep_title, date: today, certified: true }
+      : { representations: REPRESENTATIONS, signed_name: section1.rep_name, signature: signed?.name ?? "", title: section1.rep_title,
+          date: signed?.date ?? "", certified: !!signed },
     attachment_a: { zip_codes: c.qualified_class.zip_codes, ages: c.qualified_class.ages, birth_years: c.qualified_class.birth_years,
       est_beneficiaries_in_class: c.qualified_class.est_beneficiaries_in_class, est_beneficiaries_in_area: c.qualified_class.est_beneficiaries_in_area,
       meets_5000_minimum: c.qualified_class.meets_5000_minimum },
@@ -130,6 +144,23 @@ export async function updateRecognition(user: User, poolId: string, b: { recogni
   return { ok: true };
 }
 
+/** A member nonprofit's authorized representative signs Section 4 (certifies the application). */
+export async function signDonorSection(user: User, poolId: string, b: { name?: unknown; certify?: unknown }) {
+  const p = await poolStatus(poolId);
+  if (!["approved", "rejected"].includes(p.status)) throw new HttpError(400, "Section 4 is signed after everyone signs the agreement and before the application is sent.");
+  const sql = db();
+  const donor = await getDonor(sql, poolId);
+  if (donor.kind !== "member" || donor.rep_user_id !== user.id) throw new HttpError(403, "Only the Qualified Donor's authorized representative can sign Section 4.");
+  const name = String(b.name ?? "").trim().slice(0, 100);
+  if (b.certify !== true) throw new HttpError(400, "Check the box to certify the representations.");
+  if (name.toLowerCase() !== donor.rep_name.toLowerCase()) throw new HttpError(400, `Type your name exactly as shown (${donor.rep_name}) to sign.`);
+  await sql`update treasury_submissions set donor_signature = ${sql.json({ user_id: user.id, name, date: new Date().toISOString().slice(0, 10) })}
+            where id = (select id from treasury_submissions where pool_id = ${poolId} order by created_at desc limit 1)`;
+  await prepareApplication(sql, poolId);
+  if (p.status === "rejected") await sql`update pools set status = 'approved' where id = ${poolId}`;
+  return { ok: true };
+}
+
 export async function getSubmission(poolId: string) {
   const [s] = await db()<{ id: string; status: string; application: Application | null; application_hash: string | null; treasury_reference: string | null;
                            submitted_at: string | null; decided_at: string | null; payment: Record<string, string> | null; mock: boolean; amount_cents: number }[]>`
@@ -142,6 +173,7 @@ const usd = (c: number) => "$" + (c / 100).toLocaleString("en-US", { minimumFrac
 
 /** Renders the filled application + attachments as a PDF. */
 export async function renderApplicationPdf(app: Application, hash: string, status: string): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
   pdf.setTitle("Trump Accounts Qualified Class Contribution Application");
   pdf.setProducer("Hometown Seed");
@@ -210,7 +242,7 @@ export async function renderApplicationPdf(app: Application, hash: string, statu
   gap(6);
   need(2 * 16);
   text(`Authorized Representative Name: ${app.section4.signed_name}  |  Title: ${app.section4.title}`);
-  text(`Signature (electronic, for the Qualified Donor): /s/ ${app.section4.signature}  |  Date: ${app.section4.date}`);
+  text(app.section4.signature ? `Signature (electronic, for the Qualified Donor): /s/ ${app.section4.signature}  |  Date: ${app.section4.date}` : "Signature: (not yet signed by the authorized representative)");
 
   newPage();
   const a = app.attachment_a;
@@ -251,6 +283,8 @@ export async function submitApplication(user: User, poolId: string) {
     throw new HttpError(400, "Fill in Hometown Seed's nonprofit details first (missing: " + platformPlaceholders().join(", ") + ").");
   if (p.status === "rejected") await prepareApplication(db(), poolId);
   const s = await getSubmission(poolId);
+  if (s?.application?.donor_kind === "member" && !s.application.section4.certified)
+    throw new HttpError(400, `${s.application.section1.rep_name} needs to sign Section 4 for ${s.application.section1.entity_name} before it's sent.`);
   if (!s?.application) throw new HttpError(400, "Fill in the application first.");
   const ref = `${s.mock ? "MOCK-" : ""}TA-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
   const sql = db();

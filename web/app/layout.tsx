@@ -5,6 +5,8 @@ import "./app.css";
 import { getUser } from "@/lib/auth";
 import { SignOutButton } from "@/components/SignOutButton";
 import { VerifyBanner } from "@/components/VerifyBanner";
+import { BusyCursor } from "@/components/BusyCursor";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "Hometown Seed",
@@ -31,6 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
       </head>
       <body>
+        <Suspense fallback={null}><BusyCursor /></Suspense>
         <header className="top">
           <div className="wrap">
             <Link className="brand" href="/" style={{ textDecoration: "none", color: "inherit" }}><Logo />Hometown Seed</Link>
@@ -40,6 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="navlink keep" href="/match">Match</Link>
                   <Link className="navlink" href="/connections">Matches</Link>
                   <Link className="navlink" href="/me">My campaigns</Link>
+                  <Link className="navlink" href="/nonprofits">Nonprofits</Link>
                   <Link className="navlink" href="/account">Profile</Link>
                   <SignOutButton />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
@@ -48,6 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <>
                   <Link className="navlink" href="/#campaigns">Campaigns</Link>
                   <Link className="navlink" href="/#how">How it works</Link>
+                  <Link className="navlink" href="/nonprofits">Nonprofits</Link>
                   <Link className="navlink keep" href="/signin">Sign in</Link>
                   <Link className="btn btn-green btn-sm" href="/signin?mode=signup&next=/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
@@ -55,6 +60,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </nav>
           </div>
         </header>
+        {user?.is_demo && <div className="demo-banner"><div className="wrap"><b>Demo account.</b> Shared sample data for trying things out; it will be removed. <SignOutButton /></div></div>}
         {user && !user.email_verified && <VerifyBanner email={user.email} />}
         {children}
         <footer>

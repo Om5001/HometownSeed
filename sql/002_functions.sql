@@ -116,7 +116,7 @@ returns table (
     all_below_income_threshold   boolean,
     zctas_at_or_above_threshold  text[]
 )
-language sql stable as $$
+language sql stable rows 1 as $$
     with e as (
         select * from zip_child_estimates(p_zips, p_min_age, p_max_age, p_year)
     ),
