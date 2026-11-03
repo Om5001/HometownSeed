@@ -3,15 +3,15 @@ import { useState } from "react";
 import type { NotablePledge } from "@/lib/demo";
 
 type P = NotablePledge & { incomeOk?: boolean | null };
-const TYPES = { person: "People", foundation: "Foundations", company: "Companies" } as const;
+const TYPES = { person: "Personal gifts", foundation: "Through a foundation", company: "Companies" } as const;
 const SCOPES = { national: "Nationwide", state: "One state", local: "City, county or ZIP", employees: "Employees", other: "Other" } as const;
 const scopeGroup = (s: string) => (["zip", "city", "county"].includes(s) ? "local" : s);
 
 /** Lets people narrow a pledge list by name/foundation text, donor type and reach. */
-export function usePledgeFilter<T extends { donor: string; who?: string | null; donor_type: string | null; scope: string }>(all: T[]) {
+export function usePledgeFilter<T extends { donor: string; who?: string | null; via?: string | null; donor_type: string | null; scope: string }>(all: T[]) {
   const [q, setQ] = useState(""); const [type, setType] = useState<string>(""); const [scope, setScope] = useState<string>("");
   const t = q.trim().toLowerCase();
-  const shown = all.filter((p) => (!t || p.donor.toLowerCase().includes(t) || (p.who ?? "").toLowerCase().includes(t))
+  const shown = all.filter((p) => (!t || p.donor.toLowerCase().includes(t) || (p.via ?? "").toLowerCase().includes(t) || (p.who ?? "").toLowerCase().includes(t))
     && (!type || p.donor_type === type) && (!scope || scopeGroup(p.scope) === scope));
   return { q, setQ, type, setType, scope, setScope, shown };
 }
@@ -41,7 +41,7 @@ export function NotablePledges({ pledges, zip, income }: { pledges: P[]; zip?: s
       <div className="np-hits">{f.shown.length ? f.shown.map((p) => (
         <div className="np-hit" key={p.id}>
           <div>
-            <b>{p.donor}</b> <span className="small muted">· {p.amount}{p.per_child ? ` · ${p.per_child} per child` : ""}{p.form === "stock" ? " · stock" : ""}</span>
+            <b>{p.donor}</b>{p.via && <span className="small muted"> · via {p.via}</span>} <span className="small muted">· {p.amount}{p.per_child ? ` · ${p.per_child} per child` : ""}{p.form === "stock" ? " · stock" : ""}</span>
             <div className="small">{p.who}</div>
             {zip && p.income_max !== null && <div className="small muted">{p.incomeOk === true ? `✓ ${zip}'s median income ($${Number(income).toLocaleString()}) is under $${p.income_max.toLocaleString()}` : p.incomeOk === false ? `✗ ${zip}'s median income ($${Number(income).toLocaleString()}) is above $${p.income_max.toLocaleString()}` : "Income test unknown for this ZIP"}{ages(p) ? ` · ${ages(p)}` : ""}</div>}
           </div>

@@ -57,7 +57,7 @@ export function sizeCanvas(cv: HTMLCanvasElement, w0: number, h0: number) {
 
 /** TEMPORARY (demo data): estimated pledge dollars by ZIP. byZip: zcta -> cents per pledge index. */
 export type PledgeMap = {
-  pledges: { id: string; donor: string; donor_type: string | null; per_child_cents: number; total_cents: number; kids: number; zips: number; map_note: string | null }[];
+  pledges: { id: string; donor: string; via: string | null; scope: string; donor_type: string | null; per_child_cents: number; total_cents: number; kids: number; zips: number; map_note: string | null }[];
   unmapped: { donor: string; note: string | null }[];
   byZip: Map<string, number[]>;
 };

@@ -7,12 +7,12 @@ import { db } from "./db";
 export type NotablePledge = {
   id: string; donor: string; amount: string; per_child: string | null; form: string; scope: string; state: string | null;
   min_age: number | null; max_age: number | null; income_max: number | null; who: string; announced: string | null; source_name: string; source_url: string;
-  donor_type: "person" | "foundation" | "company" | null; zips: string[] | null; zip_prefixes: string[] | null;
+  donor_type: "person" | "foundation" | "company" | null; zips: string[] | null; zip_prefixes: string[] | null; via: string | null;
 };
 
 export async function notablePledges(): Promise<NotablePledge[]> {
   try {
-    return await db()<NotablePledge[]>`select id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, donor_type, zips, zip_prefixes from demo_notable_pledges order by sort`;
+    return await db()<NotablePledge[]>`select id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, donor_type, zips, zip_prefixes, via from demo_notable_pledges order by sort`;
   } catch { return []; }   // table not loaded (DEMO_DATA=0) or removed
 }
 
@@ -33,7 +33,7 @@ export function pledgesForZip(all: NotablePledge[], zcta: string, state: string 
 
 export type PledgeMapInfo = {
   id: string; donor: string; per_child_cents: number; min_age: number; max_age: number; income_max: number | null;
-  scope: string; state: string | null; map_note: string | null; donor_type: string | null; total_cents: number; kids: number; zips: number;
+  scope: string; state: string | null; map_note: string | null; donor_type: string | null; via: string | null; total_cents: number; kids: number; zips: number;
 };
 
 /**
@@ -46,16 +46,23 @@ export async function pledgeMap(): Promise<{ pledges: PledgeMapInfo[]; rows: str
   try {
     const [rows, info, unmapped] = await Promise.all([
       sql<{ z: string; id: string; cents: number }[]>`
-        select z.zcta::text as z, p.id,
-               round(child_estimate(a, p.min_age, p.max_age) * citizen_share(a) * p.per_child_cents)::float8 as cents
-        from demo_notable_pledges p
-        join zcta_stats z on (p.scope = 'national' or (p.scope = 'state' and z.place_state = p.state)
-                              or z.zcta::text = any(coalesce(p.zips, '{}')) or left(z.zcta, 3) = any(coalesce(p.zip_prefixes, '{}')))
-                         and (p.income_max is null or z.median_hh_income < p.income_max)
-        join acs_zcta_children a on a.zcta = z.zcta and a.acs_year = z.acs_year
-        where p.map_layer and p.per_child_cents is not null`,
+        with base as (
+          select z.zcta::text as z, p.id, p.per_child_cents, p.est_children,
+                 child_estimate(a, p.min_age, p.max_age) * citizen_share(a)
+                   * case when left(z.zcta, 3) = any(coalesce(p.weight_prefixes, '{}')) then coalesce(p.weight_factor, 1) else 1 end as wk
+          from demo_notable_pledges p
+          join zcta_stats z on (p.scope = 'national' or (p.scope = 'state' and z.place_state = p.state)
+                                or z.zcta::text = any(coalesce(p.zips, '{}')) or left(z.zcta, 3) = any(coalesce(p.zip_prefixes, '{}')))
+                           and (p.income_max is null or z.median_hh_income < p.income_max)
+                           and (p.map_income_max is null or z.median_hh_income < p.map_income_max)
+          join acs_zcta_children a on a.zcta = z.zcta and a.acs_year = z.acs_year
+          where p.map_layer and p.per_child_cents is not null)
+        -- pledges that reach only some children (est_children) are spread in proportion and scaled to that total
+        select z, id, round(case when est_children is null then wk * per_child_cents
+                                 else wk * est_children / nullif(sum(wk) over (partition by id), 0) * per_child_cents end)::float8 as cents
+        from base`,
       sql<Omit<PledgeMapInfo, "total_cents" | "kids" | "zips">[]>`
-        select id, donor, per_child_cents, min_age, max_age, income_max, scope, state, map_note, donor_type
+        select id, donor, via, per_child_cents, min_age, max_age, income_max, scope, state, map_note, donor_type
         from demo_notable_pledges where map_layer and per_child_cents is not null order by sort`,
       sql<{ donor: string; note: string | null }[]>`
         select donor, map_note as note from demo_notable_pledges where not map_layer and scope not in ('employees', 'other') order by sort`,

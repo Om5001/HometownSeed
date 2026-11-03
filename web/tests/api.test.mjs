@@ -420,6 +420,10 @@ test("demo account (temporary)", { skip }, async () => {
   assert.match((await d("/zip/11234")).data, /Bisignano/);
   assert.match((await d("/zip/94110")).data, /Anonymous donor \(San Francisco\)/);
   assert.doesNotMatch((await d("/zip/12501")).data, /Bisignano/);
+  const shot = pm.data.pledges.find((p) => p.id === "shotwell");
+  assert.ok(shot && shot.total_cents > 0, "Shotwell is on the map");
+  assert.ok(Math.abs(shot.kids - 2000000) < 5, "Shotwell's estimate is scaled to 2 million children");
+  assert.equal(pm.data.pledges.find((p) => p.id === "bisignano").donor, "Frank Bisignano");
 });
 
 test("messaging: direct, campaign organizer, coalition chat, unread, block", { skip }, async () => {

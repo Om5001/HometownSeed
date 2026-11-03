@@ -136,6 +136,13 @@ alter table demo_notable_pledges add column if not exists map_note text;
 alter table demo_notable_pledges add column if not exists donor_type text;   -- person | foundation | company
 alter table demo_notable_pledges add column if not exists zips text[];          -- scope 'zip': the ZIP codes
 alter table demo_notable_pledges add column if not exists zip_prefixes text[];  -- scope 'city'/'county': 3-digit ZIP prefixes (approximate)
+alter table demo_notable_pledges add column if not exists via text;             -- foundation, fund or company the gift comes through
+-- Map estimate for pledges that reach only some children (e.g. Shotwell): spread over ZIPs below an income line,
+-- weight some ZIP prefixes more, and scale so the total equals the announced number of children.
+alter table demo_notable_pledges add column if not exists est_children bigint;
+alter table demo_notable_pledges add column if not exists map_income_max integer;
+alter table demo_notable_pledges add column if not exists weight_prefixes text[];
+alter table demo_notable_pledges add column if not exists weight_factor numeric;
 insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, sort, per_child_cents, map_layer, map_note) values
  ('dell', 'Michael & Susan Dell', '$6.25 billion', '$250', 'cash', 'national', null, 0, 10, 150000,
   'The first 25 million children age 10 and under who live in ZIP codes with median household income below $150,000.',
@@ -143,31 +150,32 @@ insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, sta
  ('musk', 'Elon Musk', 'About $10.5 billion (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', null, 0, 17, null,
   'Every child in the U.S., per the announcement; Musk hasn''t said which children qualify or when (expected 2027). No Texas-specific component has been reported.',
   'October 19, 2026', 'Al Jazeera', 'https://aljazeera.com/news/2026/10/21/musk-pledges-10bn-in-spacex-shares-for-us-children-who-really-gains', 20, 14603, true, 'Valued at one SpaceX share at about $146 (price cited Oct 2026); the value moves with the stock.'),
- ('shotwell', 'Gwynne Shotwell & husband', 'About $320 million (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', 'TX', 11, 17, null,
-  'More than 2 million children ages 11 to 17, with extra emphasis on lower-income families near their central Texas home.',
-  'July 2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 30, null, false, 'Not mapped: covers about 2 million of the roughly 25 million children 11 to 17, and which ones isn''t public.'),
- ('dalio', 'Ray & Barbara Dalio (Dalio Philanthropies)', '$75 million', '$250', 'cash', 'state', 'CT', 0, 9, 150000,
+ ('shotwell', 'Gwynne Shotwell', 'About $320 million (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', 'TX', 11, 17, null,
+  'More than 2 million children ages 11 to 17 (with her husband), weighted toward lower-income families, with extra emphasis near their central Texas home.',
+  'July 2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 30, 14603, true,
+  'Which 2 million children isn''t public. Mapped as an estimate: kids 11 to 17 in ZIPs with median income under $75,000, central Texas ZIPs counted double, scaled to 2 million shares at about $146 each.'),
+ ('dalio', 'Ray & Barbara Dalio', '$75 million', '$250', 'cash', 'state', 'CT', 0, 9, 150000,
   'About 300,000 Connecticut children under 10 in ZIP codes with median income under $150,000.',
   'December 2025', 'Fortune', 'https://www.fortune.com/2025/12/17/ray-dalio-75-million-donation-trump-accounts-treasuy', 40, 25000, true, null),
- ('gerstner', 'Brad Gerstner Family Foundation', '$250 per child (more than 140,000 eligible children)', '$250', 'cash', 'state', 'IN', 0, 4, null,
+ ('gerstner', 'Brad Gerstner', '$250 per child (more than 140,000 eligible children)', '$250', 'cash', 'state', 'IN', 0, 4, null,
   'All Indiana children under age 5 with a Trump Account. Began reaching accounts in September 2026.',
   'September 23, 2026', 'Indiana House Republicans', 'https://www.indianahouserepublicans.com/blog/general/a-head-start-for-hoosier-kids/', 50, 25000, true, null),
- ('freedman', 'Ed Freedman (Stable Road Foundation)', '$250 per child', '$250', 'cash', 'state', 'HI', 11, 17, null,
+ ('freedman', 'Ed Freedman', '$250 per child', '$250', 'cash', 'state', 'HI', 11, 17, null,
   'Every eligible foster child in Hawaii ages 11 to 17, filling the gap above the Dell grant (ages 2 to 10). With Governor Josh Green and Invest America.',
   'July 2026', 'Stable Road Foundation', 'https://www.stableroadfoundation.org/in-the-news/ed-freedman-of-stable-road-foundation-joins-hawaii-public-radio-to-talk-investment-in-hawaiian-youth', 60, null, false, 'Not mapped: foster children can''t be placed by ZIP code.'),
- ('bisignano', 'Frank Bisignano (The Bisignano Family Fund)', '$250 per child', '$250', 'cash', 'zip', 'NY', 2, 8, null,
+ ('bisignano', 'Frank Bisignano', '$250 per child', '$250', 'cash', 'zip', 'NY', 2, 8, null,
   'Children ages 2 to 8 living in ZIP code 11234 (Old Mill Basin, Brooklyn), his hometown ZIP. Deposited in their accounts on announcement.',
   'October 29, 2026', 'IRS', 'https://www.irs.gov/newsroom/frank-bisignano-donates-to-trump-accounts-for-children-in-brooklyn-ny', 45, 25000, true, null),
  ('sf_anon', 'Anonymous donor (San Francisco)', '$3.5 million', 'About $500', 'cash', 'city', 'CA', 0, 0, null,
   'Babies born in San Francisco in 2026, about $500 each, announced by Mayor Daniel Lurie.',
   '2026', 'San Francisco Chronicle', 'https://www.sfchronicle.com/sf/article/sf-donor-trump-accounts-21338065.php', 55, 50000, true, 'San Francisco: estimated as kids under 1 in 941xx ZIP codes.'),
- ('anand', 'Ajay Anand (Anand Legacy Foundation)', '$500,000', '$1,000', 'cash', 'county', 'CA', 0, 0, null,
+ ('anand', 'Ajay Anand', '$500,000', '$1,000', 'cash', 'county', 'CA', 0, 0, null,
   'Newborns in Kern County, California whose mothers are enrolled in eligible rehabilitation and recovery programs.',
   '2026', 'The Bakersfield Californian', 'https://www.bakersfield.com/news/trump-accounts-for-infants-get-local-backing/article_8569d546-13c7-4164-9a90-840b642301c1.amp.html', 58, null, false, 'Not mapped: limited to newborns of mothers in recovery programs, who can''t be placed by ZIP code.'),
  ('minaj', 'Nicki Minaj', '$150,000–$300,000 (reported)', null, 'cash', 'other', null, null, null, null,
   'Newborns of her fans; eligibility not specified.',
   'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 70, null, false, null),
- ('hamm', 'Harold Hamm (Continental Resources)', 'Not stated', null, 'cash', 'employees', null, null, null, null,
+ ('hamm', 'Harold Hamm', 'Not stated', null, 'cash', 'employees', null, null, null, null,
   'Children of Continental Resources employees.',
   '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 80, null, false, null),
  ('employers', 'Employers (Bank of America, BlackRock, BNY, Charles Schwab, Dell, IBM, Intel, JPMorgan Chase, Nvidia, Visa, Wells Fargo and others)',
@@ -184,6 +192,14 @@ update demo_notable_pledges set donor_type = case id
   when 'musk' then 'person' when 'shotwell' then 'person' when 'minaj' then 'person'
   when 'hamm' then 'company' when 'employers' then 'company' else donor_type end;
 update demo_notable_pledges set zips = '{11234}' where id = 'bisignano';
+update demo_notable_pledges set via = case id
+  when 'dell' then 'Michael & Susan Dell Foundation' when 'dalio' then 'Dalio Philanthropies'
+  when 'gerstner' then 'Brad Gerstner Family Foundation (with Invest America)' when 'freedman' then 'Stable Road Foundation'
+  when 'bisignano' then 'The Bisignano Family Fund' when 'anand' then 'Anand Legacy Foundation'
+  when 'shotwell' then 'personal SpaceX shares, with her husband' when 'musk' then 'personal SpaceX shares'
+  when 'hamm' then 'Continental Resources' else via end;
+update demo_notable_pledges set est_children = 2000000, map_income_max = 75000,
+  weight_prefixes = '{765,766,767,768,786,787}', weight_factor = 2 where id = 'shotwell';
 update demo_notable_pledges set zip_prefixes = '{941}' where id = 'sf_anon';
 update demo_notable_pledges set zip_prefixes = '{933}' where id = 'anand';   -- Bakersfield-area ZIPs (all in Kern County)
 
