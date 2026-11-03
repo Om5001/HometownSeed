@@ -405,4 +405,55 @@ test("demo account (temporary)", { skip }, async () => {
   assert.equal((await d("/api/account/delete", { password: "x", confirm: "DELETE" })).status, 403);
   assert.equal((await d("/api/account/password", { current: "x", next: "another long phrase" })).status, 403);
   assert.equal((await client()("/api/auth/signup", { email: "demo@demo.hometownseed.org", name: "X", password: PW })).status, 400);
+  const pm = await d("/api/demo/pledge-map");
+  assert.ok(pm.data.pledges.some((p) => p.id === "dell"), "pledge map layer has Dell");
+  assert.match(pm.data.rows, /12501,/);
+});
+
+test("messaging: direct, campaign organizer, coalition chat, unread, block", { skip }, async () => {
+  const ann = client(), bob = client(), cat = client(), out = client();
+  await signup(ann, "Ann"); await signup(bob, "Bob"); await signup(cat, "Cat"); await signup(out, "Oli");
+  const me = async (c) => (await c("/api/profile")).data;
+  const bobId = (await bob("/api/auth/login", { email: `bob-${stamp}@example.com`, password: PW })).data.user.id;
+
+  // Bob isn't discoverable yet (no profile, no campaign)
+  assert.equal((await ann("/api/messages", { to: bobId, body: "Hi Bob" })).status, 403);
+  await bob("/api/profile", { home_zip: "11234", target_zips: ["11234"], gift_types: ["cash"], per_child_cents: 2500 });
+  assert.equal((await ann("/api/messages", { to: bobId, body: "" })).status, 400);
+  const start = await ann("/api/messages", { to: bobId, body: "Hi Bob, want to pool for 11234?" });
+  assert.equal(start.status, 201, JSON.stringify(start.data));
+  const conv = start.data.id;
+  assert.equal((await ann("/api/messages", { to: bobId, body: "Second note" })).data.id, conv, "same conversation reused");
+  assert.equal((await bob("/api/messages/unread")).data.unread, 2);
+  const list = await bob("/api/messages");
+  assert.equal(list.data[0].title, "Ann"); assert.equal(list.data[0].unread, 2);
+  assert.doesNotMatch(JSON.stringify(list.data), /@example\.com/, "no emails in conversations");
+  const th = await bob(`/api/messages/${conv}`);
+  assert.equal(th.data.messages.length, 2);
+  assert.equal((await bob("/api/messages/unread")).data.unread, 0, "opening marks read");
+  assert.equal((await bob(`/api/messages/${conv}`, { body: "Yes! Let's do it." })).status, 201);
+  assert.equal((await ann(`/api/messages/${conv}?after=${th.data.messages[1].id}`)).data.messages[0].body, "Yes! Let's do it.");
+  assert.equal((await out(`/api/messages/${conv}`)).status, 403, "outsiders can't read");
+  assert.match((await ann(`/messages/${conv}`)).data, /pool for 11234/);
+
+  // blocking
+  const annId = (await ann("/api/auth/login", { email: `ann-${stamp}@example.com`, password: PW })).data.user.id;
+  await bob(`/api/users/${annId}/block`, { block: true });
+  assert.equal((await ann(`/api/messages/${conv}`, { body: "hello?" })).status, 403);
+  await bob(`/api/users/${annId}/block`, { block: false });
+  assert.equal((await ann(`/api/messages/${conv}`, { body: "hello again" })).status, 201);
+
+  // message a campaign's organizer by slug, and the coalition chat
+  const camp = await cat("/api/campaigns", { name: `Chat Camp ${stamp}`, zips: ["11236"], goalType: "open" });
+  const toOrg = await out("/api/messages", { campaign: camp.data.slug, body: "Question about your campaign" });
+  assert.equal(toOrg.status, 201);
+  assert.equal((await cat("/api/messages")).data[0].subtitle, `About Chat Camp ${stamp}`);
+  await ann(`/api/campaigns/${camp.data.slug}/pledges`, { amountCents: 2000 });
+  const conf = await cat(`/api/campaigns/${camp.data.slug}/coalition`, {});
+  assert.equal((await out(`/api/coalitions/${conf.data.poolId}/chat`, {})).status, 403);
+  const chat = await cat(`/api/coalitions/${conf.data.poolId}/chat`, {});
+  assert.equal((await cat(`/api/messages/${chat.data.id}`, { body: "Please sign the agreement, everyone!" })).status, 201);
+  assert.ok((await ann("/api/messages/unread")).data.unread >= 1, "donor in the coalition sees the group message");
+  assert.equal((await ann(`/api/messages/${chat.data.id}`)).data.kind, "coalition");
+  void me;
 });

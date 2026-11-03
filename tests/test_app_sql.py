@@ -142,3 +142,16 @@ def test_delete_account_keeps_money_records(conn):
 def test_tables_have_row_level_security(conn):
     off = rows(conn, "select tablename from pg_tables where schemaname = 'public' and not rowsecurity")
     assert off == []
+
+
+def test_migrations_rerun_with_every_pool_status(conn):
+    # Migrations run on every start; they must not fail once coalitions reach later stages.
+    for st in ("accepted", "rejected", "distributed"):
+        conn.execute("insert into pools (name, status) values (%s, %s)", (f"p-{st}", st))
+    conn.commit()
+    db.migrate(conn)
+
+
+def test_area_stats_is_planned_as_one_row(conn):
+    # Without this hint Postgres expects 1,000 rows, overestimates matching queries and turns on JIT (seconds).
+    assert rows(conn, "select prorows from pg_proc where proname = 'area_stats'")[0]["prorows"] == 1

@@ -6,6 +6,8 @@ import { getUser } from "@/lib/auth";
 import { SignOutButton } from "@/components/SignOutButton";
 import { VerifyBanner } from "@/components/VerifyBanner";
 import { BusyCursor } from "@/components/BusyCursor";
+import { UnreadBadge } from "@/components/Messaging";
+import { unreadTotal } from "@/lib/messages";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
@@ -24,7 +26,8 @@ const Logo = () => (
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let user = null;
-  try { user = await getUser(); } catch { /* DB not configured yet */ }
+  let unread = 0;
+  try { user = await getUser(); if (user) unread = await unreadTotal(user.id); } catch { /* DB not configured yet */ }
   return (
     <html lang="en">
       <head>
@@ -40,8 +43,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <nav className="nav">
               {user ? (
                 <>
-                  <Link className="navlink keep" href="/match">Match</Link>
-                  <Link className="navlink" href="/connections">Matches</Link>
+                  <Link className="navlink keep" href="/match">Find partners</Link>
+                  <Link className="navlink keep" href="/messages">Messages<UnreadBadge initial={unread} /></Link>
                   <Link className="navlink" href="/me">My campaigns</Link>
                   <Link className="navlink" href="/nonprofits">Nonprofits</Link>
                   <Link className="navlink" href="/account">Profile</Link>

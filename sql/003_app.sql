@@ -205,7 +205,7 @@ end $$;
 alter table pools add column if not exists status text not null default 'forming';
 alter table pools drop constraint if exists pools_status_check;
 alter table pools add constraint pools_status_check
-    check (status in ('forming', 'confirmed', 'approved', 'submitted', 'funded'));
+    check (status in ('forming', 'confirmed', 'approved', 'submitted', 'accepted', 'rejected', 'funded', 'distributed'));  -- full list: re-runs must accept every later status
 
 -- Each campaign in the coalition says "we're ready to go ahead".
 create table if not exists coalition_confirmations (

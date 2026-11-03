@@ -129,35 +129,64 @@ create table if not exists demo_notable_pledges (
     sort         smallint not null default 100
 );
 alter table demo_notable_pledges enable row level security;
-insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, sort) values
+-- For the map layer: dollars per eligible child, when the recipients can be placed on a map.
+alter table demo_notable_pledges add column if not exists per_child_cents integer;
+alter table demo_notable_pledges add column if not exists map_layer boolean not null default false;
+alter table demo_notable_pledges add column if not exists map_note text;
+insert into demo_notable_pledges (id, donor, amount, per_child, form, scope, state, min_age, max_age, income_max, who, announced, source_name, source_url, sort, per_child_cents, map_layer, map_note) values
  ('dell', 'Michael & Susan Dell', '$6.25 billion', '$250', 'cash', 'national', null, 0, 10, 150000,
   'The first 25 million children age 10 and under who live in ZIP codes with median household income below $150,000.',
-  'December 2025', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 10),
+  'December 2025', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 10, 25000, true, 'Capped at the first 25 million children, so not every eligible child may be reached.'),
  ('musk', 'Elon Musk', 'About $10.5 billion (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', null, 0, 17, null,
   'Every child in the U.S., per the announcement; Musk hasn''t said which children qualify or when (expected 2027). No Texas-specific component has been reported.',
-  'October 19, 2026', 'Al Jazeera', 'https://aljazeera.com/news/2026/10/21/musk-pledges-10bn-in-spacex-shares-for-us-children-who-really-gains', 20),
+  'October 19, 2026', 'Al Jazeera', 'https://aljazeera.com/news/2026/10/21/musk-pledges-10bn-in-spacex-shares-for-us-children-who-really-gains', 20, 14603, true, 'Valued at one SpaceX share at about $146 (price cited Oct 2026); the value moves with the stock.'),
  ('shotwell', 'Gwynne Shotwell & husband', 'About $320 million (one SpaceX share per child)', '1 SpaceX share', 'stock', 'national', 'TX', 11, 17, null,
   'More than 2 million children ages 11 to 17, with extra emphasis on lower-income families near their central Texas home.',
-  'July 2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 30),
+  'July 2026', 'The Next Web', 'https://thenextweb.com/news/shotwell-spacex-stock-trump-accounts', 30, null, false, 'Not mapped: covers about 2 million of the roughly 25 million children 11 to 17, and which ones isn''t public.'),
  ('dalio', 'Ray & Barbara Dalio (Dalio Philanthropies)', '$75 million', '$250', 'cash', 'state', 'CT', 0, 9, 150000,
   'About 300,000 Connecticut children under 10 in ZIP codes with median income under $150,000.',
-  'December 2025', 'Fortune', 'https://www.fortune.com/2025/12/17/ray-dalio-75-million-donation-trump-accounts-treasuy', 40),
+  'December 2025', 'Fortune', 'https://www.fortune.com/2025/12/17/ray-dalio-75-million-donation-trump-accounts-treasuy', 40, 25000, true, null),
  ('gerstner', 'Brad Gerstner (Altimeter Capital, Invest America)', '$250 per child', '$250', 'cash', 'state', 'IN', 0, 5, null,
   'Every child age 5 and under with a Trump Account in Indiana.',
-  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 50),
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 50, 25000, true, null),
  ('freedman', 'Ed Freedman (Stable Road Foundation)', '$250 per child', '$250', 'cash', 'state', 'HI', 11, 17, null,
   'Foster children ages 11 to 17 in Hawaii.',
-  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 60),
+  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 60, null, false, 'Not mapped: foster children can''t be placed by ZIP code.'),
  ('minaj', 'Nicki Minaj', '$150,000–$300,000 (reported)', null, 'cash', 'other', null, null, null, null,
   'Newborns of her fans; eligibility not specified.',
-  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 70),
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 70, null, false, null),
  ('hamm', 'Harold Hamm (Continental Resources)', 'Not stated', null, 'cash', 'employees', null, null, null, null,
   'Children of Continental Resources employees.',
-  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 80),
+  '2026', 'TheStreet', 'https://www.thestreet.com/crypto/markets/101-donors-back-trump-accounts-full-list-revealed', 80, null, false, null),
  ('employers', 'Employers (Bank of America, BlackRock, BNY, Charles Schwab, Dell, IBM, Intel, JPMorgan Chase, Nvidia, Visa, Wells Fargo and others)',
   'Matching contributions', null, 'cash', 'employees', null, null, null, null,
   'Employees'' children, typically matching the government''s $1,000 seed.',
-  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 90)
+  'January 28, 2026', 'Newsweek', 'https://www.newsweek.com/list-of-billionaires-banks-and-businesses-contributing-to-trump-accounts-11435860', 90, null, false, null)
 on conflict (id) do update set donor = excluded.donor, amount = excluded.amount, per_child = excluded.per_child, form = excluded.form,
   scope = excluded.scope, state = excluded.state, min_age = excluded.min_age, max_age = excluded.max_age, income_max = excluded.income_max,
-  who = excluded.who, announced = excluded.announced, source_name = excluded.source_name, source_url = excluded.source_url, sort = excluded.sort;
+  who = excluded.who, announced = excluded.announced, source_name = excluded.source_name, source_url = excluded.source_url, sort = excluded.sort,
+  per_child_cents = excluded.per_child_cents, map_layer = excluded.map_layer, map_note = excluded.map_note;
+
+-- A sample conversation in the demo account's inbox (only if the messaging tables exist).
+do $$
+begin
+  if to_regclass('public.conversations') is not null then
+    insert into conversations (id, kind, pair_key, campaign_id, created_by, created_at, last_message_at)
+    values ('de000000-0000-4000-c000-000000000001', 'direct',
+            'de000000-0000-4000-8000-000000000001:de000000-0000-4000-8000-000000000003',
+            'de000000-0000-4000-9000-000000000001', 'de000000-0000-4000-8000-000000000003', now() - interval '2 days', now() - interval '1 day')
+    on conflict do nothing;
+    insert into conversation_members (conversation_id, user_id) values
+      ('de000000-0000-4000-c000-000000000001', 'de000000-0000-4000-8000-000000000001'),
+      ('de000000-0000-4000-c000-000000000001', 'de000000-0000-4000-8000-000000000003')
+    on conflict do nothing;
+    if not exists (select 1 from messages where conversation_id = 'de000000-0000-4000-c000-000000000001') then
+      insert into messages (conversation_id, sender_id, body, created_at) values
+        ('de000000-0000-4000-c000-000000000001', 'de000000-0000-4000-8000-000000000003',
+         'Hi! I chair the Harlem Valley Community Fund (a 501(c)(3)) in Millbrook. Amenia plus Millbrook still won''t reach 5,000 kids, but if we pool with Dover Plains and Wassaic we get closer. Want to talk about combining, with our fund as the Qualified Donor?',
+         now() - interval '2 days'),
+        ('de000000-0000-4000-c000-000000000001', 'de000000-0000-4000-8000-000000000001',
+         'Yes, that would be great. We''re at $25 per child in Amenia. Could you match that?', now() - interval '1 day');
+    end if;
+  end if;
+end $$;

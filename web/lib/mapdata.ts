@@ -54,3 +54,29 @@ export function sizeCanvas(cv: HTMLCanvasElement, w0: number, h0: number) {
   ctx.setTransform((dpr * w) / w0, 0, 0, (dpr * w) / w0, 0, 0);
   return { ctx, k: w / w0 };
 }
+
+/** TEMPORARY (demo data): estimated pledge dollars by ZIP. byZip: zcta -> cents per pledge index. */
+export type PledgeMap = {
+  pledges: { id: string; donor: string; per_child_cents: number; total_cents: number; kids: number; zips: number; map_note: string | null }[];
+  unmapped: { donor: string; note: string | null }[];
+  byZip: Map<string, number[]>;
+};
+let pmP: Promise<PledgeMap> | null = null;
+export function loadPledgeMap(): Promise<PledgeMap> {
+  pmP ??= fetch("/api/demo/pledge-map").then((r) => {
+    if (!r.ok) throw new Error("pledge map " + r.status);
+    return r.json();
+  }).then((d: { pledges: PledgeMap["pledges"]; unmapped: PledgeMap["unmapped"]; rows: string }) => {
+    const byZip = new Map<string, number[]>();
+    for (const row of d.rows.split(";")) {
+      if (!row) continue;
+      const [z, ...parts] = row.split(",");
+      const a: number[] = [];
+      for (const p of parts) { const [i, c] = p.split(":"); a[+i] = +c; }
+      byZip.set(z, a);
+    }
+    return { pledges: d.pledges, unmapped: d.unmapped, byZip };
+  });
+  pmP.catch(() => { pmP = null; });
+  return pmP;
+}

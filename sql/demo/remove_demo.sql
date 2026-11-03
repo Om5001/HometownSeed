@@ -15,5 +15,8 @@ delete from nonprofits where id = 'de000000-0000-4000-b000-000000000001';
 -- coalitions left with no campaigns
 delete from pools p where not exists (select 1 from campaigns c where c.pool_id = p.id)
   and not exists (select 1 from treasury_submissions t where t.pool_id = p.id);
+-- conversations nobody is left in
+delete from conversations c where c.kind = 'direct'
+  and not exists (select 1 from conversation_members m where m.conversation_id = c.id);
 drop table if exists demo_notable_pledges;
 commit;

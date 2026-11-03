@@ -23,6 +23,9 @@ export function BusyCursor() {
     if (!w.__hsFetch) {
       w.__hsFetch = window.fetch;
       window.fetch = async (...args: Parameters<typeof fetch>) => {
+        // background checks (new messages, unread count) don't count as "waiting"
+        const h = args[1]?.headers as Record<string, string> | undefined;
+        if (h && !(h instanceof Headers) && h["x-hs-background"]) return w.__hsFetch!(...args);
         open++; sync();
         try { return await w.__hsFetch!(...args); } finally { open = Math.max(0, open - 1); sync(); }
       };

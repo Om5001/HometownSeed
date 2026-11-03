@@ -3,6 +3,8 @@ import { listPlatformNonprofits } from "@/lib/nonprofits";
 import { PLATFORM } from "@/lib/platform";
 import { NonprofitBadge } from "@/components/NonprofitBadge";
 import { NonprofitSearch } from "@/components/NonprofitSearch";
+import { MessageButton } from "@/components/Messaging";
+import { getUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 const fmtEin = (e: string) => e.slice(0, 2) + "-" + e.slice(2);
@@ -11,7 +13,7 @@ const fmtEin = (e: string) => e.slice(0, 2) + "-" + e.slice(2);
 export default async function Nonprofits({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
   const { state } = await searchParams;
   const st = (state || "").toUpperCase().slice(0, 2);
-  const list = await listPlatformNonprofits(st || undefined);
+  const [list, user] = await Promise.all([listPlatformNonprofits(st || undefined), getUser()]);
   return (
     <main className="wrap section">
       <div className="section-head"><div>
@@ -27,7 +29,10 @@ export default async function Nonprofits({ searchParams }: { searchParams: Promi
             <div className="np-card" key={n.id}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><b>{n.name}</b><NonprofitBadge compact verified={n.verified_source !== "self"} /></div>
               <small className="muted">EIN {fmtEin(n.ein)}{n.city ? ` · ${n.city}, ${n.state}` : ""} · Represented by {n.reps.join(", ")}</small>
-              {n.source_url && <small><a href={n.source_url} target="_blank" rel="noreferrer">See filings on ProPublica</a></small>}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                {n.rep_ids[0] !== user?.id && <MessageButton to={n.rep_ids[0]} name={n.reps[0]} label={`Message ${n.reps[0].split(" ")[0]}`} signedIn={!!user} />}
+                {n.source_url && <small><a href={n.source_url} target="_blank" rel="noreferrer">See filings on ProPublica</a></small>}
+              </div>
             </div>
           ))}</div>
         ) : <p className="empty">No nonprofits {st ? `in ${st} ` : ""}have joined yet. If you represent one, <Link href="/account#nonprofit">add it on your profile</Link>.</p>}

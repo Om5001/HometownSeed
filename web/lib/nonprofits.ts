@@ -116,8 +116,8 @@ export async function myNonprofits(userId: string) {
 /** Nonprofits on Hometown Seed (public details only), for people looking for one. */
 export async function listPlatformNonprofits(state?: string) {
   const sql = db();
-  return sql<(Nonprofit & { reps: string[] })[]>`
-    select ${npCols(sql)}, array_agg(u.display_name order by r.created_at) as reps
+  return sql<(Nonprofit & { reps: string[]; rep_ids: string[] })[]>`
+    select ${npCols(sql)}, array_agg(u.display_name order by r.created_at) as reps, array_agg(u.id::text order by r.created_at) as rep_ids
     from nonprofits n join nonprofit_reps r on r.nonprofit_id = n.id join app_users u on u.id = r.user_id
     ${state ? sql`where n.state = ${state.toUpperCase()}` : sql``}
     group by n.id order by (n.verified_source <> 'self') desc, n.name limit 200`;

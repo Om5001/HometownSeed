@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { DeckCard } from "@/lib/queries";
 import { ageLabel, fmt, initials, moneyC, perChild } from "@/lib/format";
+import { MessageButton } from "./Messaging";
 
 const GIFT: Record<string, string> = { cash: "Cash", stock: "Stock", daf: "DAF" };
 
@@ -29,7 +30,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
     setTimeout(() => {
       setCards((c) => c.slice(1)); setLast(card); setFly(0); setDrag({ x: 0, active: false });
       if (res.matched) setMatch(card);
-      else if (like) setNote(card.kind === "campaign" ? `Saved ${card.title} to your matches.` : `Liked ${card.title}. If they like you back, you'll match.`);
+      else if (like) setNote(`Saved ${card.title}. You can message them any time from Saved.`);
       else setNote("");
     }, 220);
   }, [top, fly]);
@@ -50,7 +51,7 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
     return () => window.removeEventListener("keydown", k);
   }, [decide]);
 
-  const onDown = (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest("a,button")) return; start.current = e.clientX; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDrag({ x: 0, active: true }); };
+  const onDown = (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest("a,button,textarea,input")) return; start.current = e.clientX; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDrag({ x: 0, active: true }); };
   const onMove = (e: React.PointerEvent) => { if (start.current !== null) setDrag({ x: e.clientX - start.current, active: true }); };
   const onUp = () => {
     if (start.current === null) return;
@@ -62,14 +63,14 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
   return (
     <div className="deck-wrap">
       {match && (
-        <div className="deck-match" role="dialog" aria-label="It's a match">
+        <div className="deck-match" role="dialog" aria-label="Mutual interest">
           <div className="panel stack" style={{ textAlign: "center", alignItems: "center" }}>
-            <div className="ring">♥</div>
-            <h2>It&apos;s a match!</h2>
-            <p className="lede2">You and {match.title} both want to give together. Start a campaign as a team or invite them to yours.</p>
-            <div className="acts" style={{ display: "flex", gap: 8 }}>
-              <Link className="btn btn-green" href="/connections">See your matches</Link>
-              <button className="btn btn-ghost" onClick={() => setMatch(null)}>Keep swiping</button>
+            <div className="ring">✓</div>
+            <h2>You saved each other</h2>
+            <p className="lede2">You and {match.title} are both interested in giving together. Send a message to plan a campaign or pool.</p>
+            <div className="acts" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              <MessageButton to={match.id} name={match.title} label={`Message ${match.title.split(" ")[0]}`} className="btn btn-green" />
+              <button className="btn btn-ghost" onClick={() => setMatch(null)}>Keep reviewing</button>
             </div>
           </div>
         </div>
@@ -83,11 +84,11 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
           return (
             <article key={c.kind + c.id} className={"dcard" + (isTop ? " top" : "")} style={style}
               onPointerDown={isTop ? onDown : undefined} onPointerMove={isTop ? onMove : undefined} onPointerUp={isTop ? onUp : undefined} onPointerCancel={isTop ? onUp : undefined}>
-              {isTop && x > 40 && <span className="stamp like">{c.kind === "person" ? "CONNECT" : "SAVE"}</span>}
+              {isTop && x > 40 && <span className="stamp like">SAVE</span>}
               {isTop && x < -40 && <span className="stamp pass">PASS</span>}
               <div className="split">
                 <span className={"tag " + (c.kind === "campaign" ? "g" : "b")}>{c.kind === "campaign" ? "Campaign" : "Giver"}</span>
-                <span className="tag">{Math.round(c.score * 100)}% match</span>
+                <span className="tag">{Math.round(c.score * 100)}% fit</span>
               </div>
               <div className="dhead">
                 <span className={"mono-tile " + (c.kind === "campaign" ? "t0" : "t1")}>{initials(c.title)}</span>
@@ -105,7 +106,11 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
                 <span className="tag">{ageLabel(c.min_age, c.max_age)}</span>
                 {c.kind === "person" && c.gift_types.map((g) => <span key={g} className="tag">{GIFT[g] ?? g}</span>)}
               </div>
-              {c.kind === "campaign" && c.slug && <Link className="small" href={`/c/${c.slug}`} target="_blank">Open campaign page ↗</Link>}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                {isTop && <MessageButton to={c.kind === "person" ? c.id : undefined} campaign={c.kind === "campaign" ? c.slug ?? undefined : undefined}
+                  name={c.kind === "campaign" ? `${c.title}'s organizer` : c.title} label={c.kind === "campaign" ? "Message organizer" : "Message"} />}
+                {c.kind === "campaign" && c.slug && <Link className="small" href={`/c/${c.slug}`} target="_blank">Open campaign page ↗</Link>}
+              </div>
             </article>
           );
         })}
@@ -119,9 +124,9 @@ export function SwipeDeck({ initial }: { initial: DeckCard[] }) {
       </div>
       {top && (
         <div className="deck-btns">
-          <button className="dbtn pass" aria-label="Pass" onClick={() => decide(false)}>✕</button>
+          <button className="dbtn pass" aria-label="Not now" onClick={() => decide(false)}>✕</button>
           <button className="dbtn undo" aria-label="Undo last" disabled={!last} onClick={undo}>↺</button>
-          <button className="dbtn like" aria-label={top.kind === "person" ? "Connect" : "Save"} onClick={() => decide(true)}>♥</button>
+          <button className="dbtn like" aria-label="Save" onClick={() => decide(true)}>★</button>
         </div>
       )}
       <p className="small muted" style={{ textAlign: "center", minHeight: 20 }} aria-live="polite">{note || (top ? "Tip: use ← and → keys" : "")}</p>

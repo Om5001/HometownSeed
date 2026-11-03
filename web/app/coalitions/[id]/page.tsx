@@ -6,6 +6,7 @@ import { ensureCurrentAgreement, getSigners, LOCKED, type buildDocument, type Pe
 import { fmt, money, moneyC, perChild } from "@/lib/format";
 import { DonorChooser, DonorSignForm, LeaveCoalition, PrintButton, SignForm } from "@/components/CoalitionActions";
 import { NonprofitBadge } from "@/components/NonprofitBadge";
+import { CoalitionChatButton, MessageButton } from "@/components/Messaging";
 import { donorOptions, getDonor, nonprofitBadges } from "@/lib/nonprofits";
 import { TreasuryPanel } from "@/components/TreasuryPanel";
 import { getOutbox, getSubmission, mockTreasuryEnabled, roleLabel } from "@/lib/treasury";
@@ -78,6 +79,7 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
       {donorPanel}
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <Link className="btn btn-ghost btn-sm" href={back.href}>Back to {back.name}</Link>
+        <CoalitionChatButton poolId={id} />
         {canLeave && <LeaveCoalition poolId={id} consequences={consequences} backTo={back.href} />}
       </div>
     </main>
@@ -91,7 +93,7 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
     <main className="wrap" style={{ paddingBlock: 28 }}>
       <div className="noprint split" style={{ maxWidth: 860, margin: "0 auto 14px" }}>
         <Link className="back" href={back.href}>← Back to {back.name}</Link>
-        <PrintButton />
+        <span style={{ display: "inline-flex", gap: 8 }}><CoalitionChatButton poolId={id} /><PrintButton /></span>
       </div>
 
       {pool.status === "confirmed" && meSigner && (
@@ -145,7 +147,8 @@ export default async function CoalitionPage({ params }: { params: Promise<{ id: 
         {signers.length ? (
           <table className="signers"><thead><tr><th>Name</th><th>Role</th><th className="n">Pledged</th><th>Signature</th></tr></thead>
             <tbody>{signers.map((s) => (
-              <tr key={s.user_id}><td><b>{s.name}</b>{s.user_id === user.id && <span className="meta"> (you)</span>}{badges.has(s.user_id) && <div><NonprofitBadge name={badges.get(s.user_id)} /></div>}</td><td className="meta">{roleLabel(s)}</td>
+              <tr key={s.user_id}><td><b>{s.name}</b>{s.user_id === user.id && <span className="meta"> (you)</span>}{badges.has(s.user_id) && <div><NonprofitBadge name={badges.get(s.user_id)} /></div>}
+                  {s.user_id !== user.id && <div className="noprint" style={{ marginTop: 4 }}><MessageButton to={s.user_id} name={s.name} className="linkish small" /></div>}</td><td className="meta">{roleLabel(s)}</td>
                 <td className="n">{s.pledged_cents ? money(s.pledged_cents) : "—"}</td>
                 <td className="st">{s.signed ? <>/s/ {s.signed_name}<div className="meta">{new Date(s.signed_at!).toLocaleString("en-US")}</div></> : <span className="meta">Waiting</span>}</td></tr>
             ))}</tbody></table>

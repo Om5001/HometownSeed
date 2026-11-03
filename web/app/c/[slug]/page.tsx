@@ -7,6 +7,7 @@ import { AreaMap } from "@/components/AreaMap";
 import { MatchCard } from "@/components/MatchCard";
 import { CampaignDanger, CampaignSettings, InvitePanel, PledgeForm, PoolButton, RequestButtons, ShareButton } from "@/components/CampaignActions";
 import { Tracker } from "@/components/Tracker";
+import { MessageButton } from "@/components/Messaging";
 import { coalitionState, LOCKED } from "@/lib/coalition";
 import { pledgePause } from "@/lib/format";
 import { PLATFORM } from "@/lib/platform";
@@ -71,7 +72,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <div className="org">
               <span className="avstack">{team.slice(0, 4).map((t) => <span key={t.id} className="avatar av-none">{initials(t.display_name)}</span>)}</span>
               <span>Organized by <b>{team.map((t) => t.display_name).join(", ")}</b></span>
-              <span className="sp"><ShareButton path={`/c/${c.slug}`} /><a className="btn btn-green btn-sm" href="#give">Pledge</a></span>
+              <span className="sp">{!role && <MessageButton campaign={c.slug} name={`${c.name}'s organizer`} label="Message organizer" signedIn={!!user} />}<ShareButton path={`/c/${c.slug}`} /><a className="btn btn-green btn-sm" href="#give">Pledge</a></span>
             </div>
           </section>
 

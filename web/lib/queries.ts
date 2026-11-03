@@ -276,14 +276,18 @@ export async function getDeck(userId: string, limit = 30) {
 export async function getConnections(userId: string) {
   const sql = db();
   const [people, liked, invites] = await Promise.all([
-    sql<{ id: string; display_name: string; email: string; matched_at: string; home: string | null; per_child_cents: number | null;
+    sql<{ id: string; display_name: string; email: string | null; matched_at: string; mutual: boolean; home: string | null; per_child_cents: number | null;
           gift_types: string[] | null; target_zips: string[] | null; bio: string | null }[]>`
-      select u.id, u.display_name, u.email, c.matched_at,
+      select u.id, u.display_name, s.created_at as matched_at,
+             exists (select 1 from swipes b where b.user_id = u.id and b.target_kind = 'person' and b.target_id = ${userId} and b.decision = 'like') as mutual,
+             case when exists (select 1 from swipes b where b.user_id = u.id and b.target_kind = 'person' and b.target_id = ${userId} and b.decision = 'like')
+                  then u.email end as email,
              (select z.place_name || ', ' || z.place_state from zcta_stats z where z.zcta = g.home_zip) as home,
              g.per_child_cents::float8 as per_child_cents, g.gift_types, g.target_zips::text[] as target_zips, g.bio
-      from v_connections c join app_users u on u.id = c.other_id
+      from swipes s join app_users u on u.id = s.target_id
       left join giving_profiles g on g.user_id = u.id
-      where c.user_id = ${userId} order by c.matched_at desc`,
+      where s.user_id = ${userId} and s.target_kind = 'person' and s.decision = 'like'
+      order by 4 desc, s.created_at desc`,
     listCampaignsByIds(sql, userId),
     sql<{ id: string; slug: string; name: string; invite_code: string; from_name: string }[]>`
       select i.id, c.slug, c.name, c.invite_code, u.display_name as from_name
