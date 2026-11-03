@@ -7,6 +7,7 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { VerifyBanner } from "@/components/VerifyBanner";
 import { BusyCursor } from "@/components/BusyCursor";
 import { UnreadBadge } from "@/components/Messaging";
+import { NavMenu } from "@/components/NavMenu";
 import { unreadTotal } from "@/lib/messages";
 import { Suspense } from "react";
 
@@ -43,20 +44,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <nav className="nav">
               {user ? (
                 <>
-                  <Link className="navlink keep" href="/match">Find partners</Link>
-                  <Link className="navlink keep" href="/messages">Messages<UnreadBadge initial={unread} /></Link>
-                  <Link className="navlink" href="/me">My campaigns</Link>
-                  <Link className="navlink" href="/nonprofits">Nonprofits</Link>
-                  <Link className="navlink" href="/account">Profile</Link>
-                  <SignOutButton />
+                  <Link className="navlink wide-only" href="/match">Find partners</Link>
+                  <Link className="navlink keep navmsg" href="/messages" aria-label="Messages"><span className="msg-word">Messages</span><span className="msg-icon" aria-hidden="true">✉</span><UnreadBadge initial={unread} /></Link>
+                  <Link className="navlink wide-only" href="/me">My campaigns</Link>
+                  <Link className="navlink wide-only" href="/nonprofits">Nonprofits</Link>
+                  <Link className="navlink wide-only" href="/account">Profile</Link>
+                  <span className="wide-only"><SignOutButton /></span>
+                  <NavMenu signOut links={[{ href: "/match", label: "Find partners" }, { href: "/messages", label: "Messages" }, { href: "/me", label: "My campaigns" },
+                    { href: "/connections", label: "Saved and invites" }, { href: "/nonprofits", label: "Nonprofits" }, { href: "/account", label: "Profile" }]} />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               ) : (
                 <>
-                  <Link className="navlink" href="/#campaigns">Campaigns</Link>
-                  <Link className="navlink" href="/#how">How it works</Link>
-                  <Link className="navlink" href="/nonprofits">Nonprofits</Link>
+                  <Link className="navlink wide-only" href="/#campaigns">Campaigns</Link>
+                  <Link className="navlink wide-only" href="/#how">How it works</Link>
+                  <Link className="navlink wide-only" href="/nonprofits">Nonprofits</Link>
                   <Link className="navlink keep" href="/signin">Sign in</Link>
+                  <NavMenu links={[{ href: "/#campaigns", label: "Campaigns" }, { href: "/#how", label: "How it works" }, { href: "/nonprofits", label: "Nonprofits" }]} />
                   <Link className="btn btn-green btn-sm" href="/signin?mode=signup&next=/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               )}

@@ -5,6 +5,8 @@ import { NonprofitBadge } from "@/components/NonprofitBadge";
 import { NonprofitSearch } from "@/components/NonprofitSearch";
 import { MessageButton } from "@/components/Messaging";
 import { getUser } from "@/lib/auth";
+import { localNonprofits } from "@/lib/demo";                           // TEMPORARY demo
+import { LocalNonprofits } from "@/components/demo/LocalNonprofits";  // TEMPORARY demo
 
 export const dynamic = "force-dynamic";
 const fmtEin = (e: string) => e.slice(0, 2) + "-" + e.slice(2);
@@ -13,7 +15,7 @@ const fmtEin = (e: string) => e.slice(0, 2) + "-" + e.slice(2);
 export default async function Nonprofits({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
   const { state } = await searchParams;
   const st = (state || "").toUpperCase().slice(0, 2);
-  const [list, user] = await Promise.all([listPlatformNonprofits(st || undefined), getUser()]);
+  const [list, user, local] = await Promise.all([listPlatformNonprofits(st || undefined), getUser(), localNonprofits()]);
   return (
     <main className="wrap section">
       <div className="section-head"><div>
@@ -37,6 +39,8 @@ export default async function Nonprofits({ searchParams }: { searchParams: Promi
           ))}</div>
         ) : <p className="empty">No nonprofits {st ? `in ${st} ` : ""}have joined yet. If you represent one, <Link href="/account#nonprofit">add it on your profile</Link>.</p>}
       </section>
+
+      {(!st || st === "NY") && <div style={{ marginBottom: 18 }}><LocalNonprofits orgs={local} /></div>}
 
       <section className="panel">
         <div className="panel-head"><div><p className="eyebrow">All U.S. 501(c)(3)s</p><h2 style={{ marginTop: 4 }}>Search IRS records</h2></div></div>

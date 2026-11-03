@@ -408,6 +408,18 @@ test("demo account (temporary)", { skip }, async () => {
   const pm = await d("/api/demo/pledge-map");
   assert.ok(pm.data.pledges.some((p) => p.id === "dell"), "pledge map layer has Dell");
   assert.match(pm.data.rows, /12501,/);
+  assert.equal(pm.data.pledges.find((p) => p.id === "dell").donor_type, "foundation");
+  assert.match((await d("/nonprofits")).data, /Wassaic Project/);
+  assert.match((await d("/zip/12545")).data, /Cary Institute of Ecosystem Studies/);
+  const inbox = (await d("/api/messages")).data;
+  assert.ok(inbox.some((c) => c.kind === "coalition"), "demo has a coalition chat");
+  assert.match((await d("/me")).data, /Harlem Valley Seed/);
+  const bis = pm.data.pledges.findIndex((p) => p.id === "bisignano");
+  assert.ok(bis >= 0, "Bisignano is mapped");
+  assert.match(pm.data.rows, new RegExp(`11234,[^;]*\\b${bis}:\\d+`), "Bisignano covers 11234");
+  assert.match((await d("/zip/11234")).data, /Bisignano/);
+  assert.match((await d("/zip/94110")).data, /Anonymous donor \(San Francisco\)/);
+  assert.doesNotMatch((await d("/zip/12501")).data, /Bisignano/);
 });
 
 test("messaging: direct, campaign organizer, coalition chat, unread, block", { skip }, async () => {

@@ -17,14 +17,20 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
   const router = useRouter();
   const base = useRef<HTMLCanvasElement>(null), ov = useRef<HTMLCanvasElement>(null);
   const [layer, setLayer] = useState<Layer>("campaigns");
-  const [sel, setSel] = useState<string>("all");          // pledge id or "all"
+  const [picked, setPicked] = useState<string[]>([]);     // chosen pledge ids; none = all
+  const [q, setQ] = useState("");                          // search names or foundations
+  const [dtype, setDtype] = useState("");                  // person | foundation | company
   const [pm, setPm] = useState<PledgeMap | null>(null);
   const [hover, setHover] = useState<(Pt & { c?: Cover }) | null>(null);
   const [err, setErr] = useState("");
   const data = useRef<{ pts: Pt[]; cov: Map<string, Cover>; qt: Quadtree<Pt>; k: number } | null>(null);
 
   useEffect(() => { if (layer === "pledges" && !pm) loadPledgeMap().then(setPm).catch(() => setErr("The pledge layer couldn't load.")); }, [layer, pm]);
-  const active = useMemo(() => (pm ? pm.pledges.map((p, i) => (sel === "all" || sel === p.id ? i : -1)).filter((i) => i >= 0) : []), [pm, sel]);
+  const matches = (p: PledgeMap["pledges"][number]) =>
+    (!q.trim() || p.donor.toLowerCase().includes(q.trim().toLowerCase())) && (!dtype || p.donor_type === dtype);
+  const active = useMemo(() => (pm ? pm.pledges.map((p, i) => ((picked.length ? picked.includes(p.id) : true) && matches(p) ? i : -1)).filter((i) => i >= 0) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pm, picked, q, dtype]);
   const dollarsAt = (z: string) => {
     const row = pm?.byZip.get(z); if (!row) return 0;
     let c = 0; for (const i of active) c += row[i] ?? 0; return c / 100;
@@ -111,12 +117,22 @@ export function HomeMap({ minKids = 5000 }: { minKids?: number }) {
           <button type="button" aria-pressed={layer === "pledges"} onClick={() => setLayer("pledges")}>Big pledges</button>
         </div>
         {layer === "pledges" && pm && pm.pledges.length > 0 && (
-          <select className="input" style={{ width: "auto", padding: "7px 10px" }} value={sel} onChange={(e) => setSel(e.target.value)} aria-label="Which pledge">
-            <option value="all">All mapped pledges</option>
-            {pm.pledges.map((p) => <option key={p.id} value={p.id}>{p.donor}</option>)}
-          </select>
+          <input className="input" style={{ width: 230, padding: "7px 10px" }} placeholder="Search names or foundations" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search pledges by name or foundation" />
         )}
       </div>
+      {layer === "pledges" && pm && pm.pledges.length > 0 && (
+        <div className="pfilters" role="group" aria-label="Pledges shown on the map">
+          {[["", "All types"], ["person", "People"], ["foundation", "Foundations"], ["company", "Companies"]].map(([k, v]) => (
+            <button key={k || "all"} type="button" aria-pressed={dtype === k} onClick={() => setDtype(k)}>{v}</button>))}
+          <span className="small muted" style={{ alignSelf: "center" }}>·</span>
+          {pm.pledges.filter(matches).map((p) => (
+            <button key={p.id} type="button" aria-pressed={picked.includes(p.id)} title={`≈ ${moneyC(p.total_cents)} mapped`}
+              onClick={() => setPicked((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))}>{p.donor}</button>
+          ))}
+          {picked.length > 0 && <button type="button" onClick={() => setPicked([])}>Show all</button>}
+          {pm.pledges.filter(matches).length === 0 && <span className="small muted">No mapped pledge matches.</span>}
+        </div>
+      )}
       {layer === "campaigns" ? (
         <div className="legend">
           <span><i style={{ background: "var(--green)" }} />Campaign area with 5,000+ kids</span>

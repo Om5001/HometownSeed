@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getRules, getZip, listCampaigns, suggestNearby } from "@/lib/queries";
-import { notablePledges, pledgesForZip } from "@/lib/demo";               // TEMPORARY demo
+import { localNonprofits, notablePledges, pledgesForZip } from "@/lib/demo";  // TEMPORARY demo
+import { LocalNonprofits } from "@/components/demo/LocalNonprofits";        // TEMPORARY demo
 import { NotablePledges } from "@/components/demo/NotablePledges";        // TEMPORARY demo
 import { fmt, moneyC, placeLabel } from "@/lib/format";
 import { AreaMap } from "@/components/AreaMap";
@@ -15,7 +16,7 @@ export default async function ZipPage({ params }: { params: Promise<{ zip: strin
   if (!/^\d{5}$/.test(zip)) notFound();
   const z = await getZip(zip);
   if (!z) notFound();
-  const [camps, nearby, rules, notable] = await Promise.all([listCampaigns({ zcta: zip }), suggestNearby([zip], 8), getRules(), notablePledges()]);
+  const [camps, nearby, rules, notable, local] = await Promise.all([listCampaigns({ zcta: zip }), suggestNearby([zip], 8), getRules(), notablePledges(), localNonprofits(zip)]);
   const ages: [string, number][] = [
     ["0–2", z.age_0_2], ["3–4", z.age_3_4], ["5", z.age_5], ["6–8", z.age_6_8], ["9–11", z.age_9_11], ["12–14", z.age_12_14], ["15–17", z.age_15_17],
   ];
@@ -68,7 +69,7 @@ export default async function ZipPage({ params }: { params: Promise<{ zip: strin
           </section>
         </div>
       </div>
-      <div className="wrap"><NotablePledges pledges={pledgesForZip(notable, z.place_state, z.median_hh_income)} zip={zip} income={z.median_hh_income} /></div>
+      <div className="wrap"><NotablePledges pledges={pledgesForZip(notable, zip, z.place_state, z.median_hh_income)} zip={zip} income={z.median_hh_income} /><LocalNonprofits orgs={local} zip={zip} /></div>
     </main>
   );
 }

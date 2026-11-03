@@ -3,6 +3,10 @@
 -- then set DEMO_DATA=0 and DEMO_ACCOUNT=0 (or delete the sql/demo folder and the
 -- demo code marked TEMPORARY in web/).
 begin;
+-- the demo coalition and its chat
+delete from conversations where pool_id = 'de000000-0000-4000-d000-000000000001';
+update campaigns set pool_id = null where pool_id = 'de000000-0000-4000-d000-000000000001';
+delete from pools where id = 'de000000-0000-4000-d000-000000000001';
 -- campaigns marked as demo, with their pledges
 select delete_campaign(id) from campaigns where is_demo;
 -- pledges demo people made to anyone else's campaigns (promises only)
@@ -19,4 +23,5 @@ delete from pools p where not exists (select 1 from campaigns c where c.pool_id 
 delete from conversations c where c.kind = 'direct'
   and not exists (select 1 from conversation_members m where m.conversation_id = c.id);
 drop table if exists demo_notable_pledges;
+drop table if exists demo_local_nonprofits;
 commit;
