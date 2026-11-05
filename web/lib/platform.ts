@@ -25,3 +25,12 @@ export type Platform = typeof PLATFORM;
 export function platformPlaceholders(): string[] {
   return Object.entries(PLATFORM).filter(([, v]) => /\[.*\]/.test(String(v))).map(([k]) => k.replace(/_/g, " "));
 }
+
+/** Public contact details for the About page (not part of Treasury's application). */
+export const ORG_PUBLIC = {
+  contact_email: env("ORG_CONTACT_EMAIL", "[Contact email]"),
+  website: env("ORG_WEBSITE", "hometownseed.org"),
+};
+
+/** A value for display: placeholders like "[EIN 00-0000000]" read as "Being finalized". */
+export const shown = (v: string, pending = "Being finalized") => (/\[.*\]/.test(v) ? pending : v);

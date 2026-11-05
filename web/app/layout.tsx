@@ -8,6 +8,7 @@ import { VerifyBanner } from "@/components/VerifyBanner";
 import { BusyCursor } from "@/components/BusyCursor";
 import { UnreadBadge } from "@/components/Messaging";
 import { NavMenu } from "@/components/NavMenu";
+import { PLATFORM } from "@/lib/platform";
 import { unreadTotal } from "@/lib/messages";
 import { Suspense } from "react";
 
@@ -51,16 +52,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="navlink wide-only" href="/account">Profile</Link>
                   <span className="wide-only"><SignOutButton /></span>
                   <NavMenu signOut links={[{ href: "/match", label: "Find partners" }, { href: "/messages", label: "Messages" }, { href: "/me", label: "My campaigns" },
-                    { href: "/connections", label: "Saved and invites" }, { href: "/nonprofits", label: "Nonprofits" }, { href: "/account", label: "Profile" }]} />
+                    { href: "/connections", label: "Saved and invites" }, { href: "/nonprofits", label: "Nonprofits" }, { href: "/about", label: "About" }, { href: "/account", label: "Profile" }]} />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               ) : (
                 <>
                   <Link className="navlink wide-only" href="/#campaigns">Campaigns</Link>
-                  <Link className="navlink wide-only" href="/#how">How it works</Link>
+                  <Link className="navlink wide-only" href="/about">About</Link>
                   <Link className="navlink wide-only" href="/nonprofits">Nonprofits</Link>
                   <Link className="navlink keep" href="/signin">Sign in</Link>
-                  <NavMenu links={[{ href: "/#campaigns", label: "Campaigns" }, { href: "/#how", label: "How it works" }, { href: "/nonprofits", label: "Nonprofits" }]} />
+                  <NavMenu links={[{ href: "/#campaigns", label: "Campaigns" }, { href: "/about", label: "About" }, { href: "/nonprofits", label: "Nonprofits" }]} />
                   <Link className="btn btn-green btn-sm" href="/signin?mode=signup&next=/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               )}
@@ -74,7 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <span id="hs-render" hidden data-t={`${Date.now()}-${Math.random().toString(36).slice(2, 7)}`} />
         <footer>
           <div className="wrap">
-            <p><b style={{ color: "var(--ink)" }}>Hometown Seed is a prototype.</b> It is not affiliated with the U.S. Treasury, the IRS, or any account provider. Gifts are recorded as pledges only; no payments are processed.</p>
+            <p><b style={{ color: "var(--ink)" }}>{PLATFORM.entity_name} is a 501(c)(3) nonprofit</b>{/\[/.test(PLATFORM.ein) ? " (EIN being finalized)" : ` (EIN ${PLATFORM.ein})`}. <Link href="/about">About us</Link>. It is not affiliated with the U.S. Treasury, the IRS, or any account provider. This site is a prototype: gifts are recorded as pledges only, and no payments are processed.</p>
             <p>Child counts: U.S. Census Bureau, American Community Survey 5-year estimates (tables B09001, B05003, B19013) by ZIP Code Tabulation Area. Estimated account beneficiaries = children under 18, adjusted by each area&apos;s share of U.S. citizens. Treasury determines the actual children in a contribution on its record date.</p>
           </div>
         </footer>
