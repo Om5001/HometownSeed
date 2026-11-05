@@ -112,18 +112,19 @@ test("profiles, swipe deck, mutual match, start together", { skip }, async () =>
   assert.deepEqual(prof.data.profile.target_zips, ["11234", "11236"]);
 
   const deck = await dee("/api/deck?limit=100");
+  const people = await dee("/api/deck?kind=person&limit=100");   // other test runs may share the database
   assert.equal(deck.status, 200);
-  const eliCard = deck.data.find((c) => c.kind === "person" && c.id === eliId);
+  const eliCard = people.data.find((c) => c.id === eliId);
   assert.ok(eliCard, "Eli should be in Dee's deck");
   const camp = deck.data.find((c) => c.kind === "campaign");
   assert.ok(camp && camp.score >= deck.data.at(-1).score, "deck is sorted by score");
   for (let i = 1; i < deck.data.length; i++) assert.ok(deck.data[i - 1].score >= deck.data[i].score);
 
   assert.equal((await dee("/api/swipes", { kind: "person", id: eliCard.id, decision: "like" })).data.matched, false);
-  const eliDeck = await eli("/api/deck?limit=100");
+  const eliDeck = await eli("/api/deck?kind=person&limit=100");
   const deeCard = eliDeck.data.find((c) => c.kind === "person" && c.id === deeId);
   assert.equal((await eli("/api/swipes", { kind: "person", id: deeCard.id, decision: "like" })).data.matched, true);
-  assert.ok(!(await dee("/api/deck?limit=100")).data.some((c) => c.id === eliCard.id), "swiped cards leave the deck");
+  assert.ok(!(await dee("/api/deck?kind=person&limit=100")).data.some((c) => c.id === eliCard.id), "swiped cards leave the deck");
 
   await dee("/api/swipes", { kind: "campaign", id: camp.id, decision: "like" });
   const page = await dee("/connections");
@@ -472,4 +473,27 @@ test("messaging: direct, campaign organizer, coalition chat, unread, block", { s
   assert.ok((await ann("/api/messages/unread")).data.unread >= 1, "donor in the coalition sees the group message");
   assert.equal((await ann(`/api/messages/${chat.data.id}`)).data.kind, "coalition");
   void me;
+});
+
+test("donating to the Hometown Seed Fund", { skip }, async () => {
+  const gia = client(), anon = client();
+  await signup(gia, "Gia");
+  assert.equal((await anon("/api/donations", { amountCents: 5000 })).status, 401);
+  assert.equal((await gia("/api/donations", { amountCents: 100 })).status, 400, "minimum $5");
+  assert.equal((await gia("/api/donations", { amountCents: 5000, designation: "state", state: "ZZ" })).status, 400);
+  assert.equal((await gia("/api/donations", { amountCents: 5000, designation: "zip", zip: "00000" })).status, 400);
+  const before = (await anon("/api/donations")).data;
+  const a = await gia("/api/donations", { amountCents: 5000 });
+  assert.equal(a.status, 201, JSON.stringify(a.data)); assert.equal(a.data.designation, "anywhere");
+  const b = await gia("/api/donations", { amountCents: 2500, frequency: "monthly", designation: "zip", zip: "11234", message: "Marine Park!" });
+  assert.equal(b.data.frequency, "monthly"); assert.equal(b.data.zcta, "11234");
+  const c = await gia("/api/donations", { amountCents: 10000, designation: "state", state: "ny", anonymous: true });
+  assert.equal(c.data.state, "NY");
+  const after = (await anon("/api/donations")).data;
+  assert.equal(after.total_cents - before.total_cents, 15000, "one-time gifts add up");
+  assert.equal(after.monthly_cents - before.monthly_cents, 2500);
+  assert.ok(after.recent.some((r) => r.name === "Anonymous" && r.cents === 10000), "anonymous gifts hide the name");
+  const page = await gia("/donate");
+  assert.match(page.data, /Your gifts to the Fund/);
+  assert.match(page.data, /11234/);
 });

@@ -203,17 +203,14 @@ html.hs-busy body::before, html.hs-nav body::before {
 .top .wrap { min-width: 0; }
 .brand { min-width: 0; }
 .nav { min-width: 0; flex-wrap: nowrap; }
-.navmenu { display: none; position: relative; }
+.navmenu { display: block; position: relative; }
 .navmenu summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; color: var(--ink); }
 .navmenu summary::-webkit-details-marker { display: none; }
 .navmenu summary:hover, .navmenu[open] summary { background: var(--sunk); }
 .navmenu-list { position: absolute; right: 0; top: calc(100% + 6px); min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px; display: flex; flex-direction: column; z-index: 40; }
 .navmenu-list a, .navmenu-list button { display: block !important; text-align: left; padding: 10px 12px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--ink); text-decoration: none; background: none; border: 0; cursor: pointer; font-family: inherit; }
 .navmenu-list a:hover, .navmenu-list button:hover { background: var(--sunk); }
-@media (max-width: 1100px) {
-  .nav .wide-only { display: none !important; }
-  .navmenu { display: block; }
-}
+@media (max-width: 1000px) { .nav .wide-only { display: none !important; } }
 @media (max-width: 760px) { .nav a.navlink.navmsg { display: inline-flex; } }
 @media (max-width: 420px) { .navmenu-label { display: none; } .top .wrap { gap: 8px; } .nav a, .nav summary { padding: 8px 9px; } }
 
@@ -285,3 +282,16 @@ h1, h2, h3, b, p, small, td, th, li, .tag, .np-badge, .pill { overflow-wrap: bre
 .about-list { display: block; }
 .about-list li { display: list-item; margin: 6px 0; }
 .about-grid > .panel { align-self: start; }
+/* Donate */
+fieldset.where { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; margin: 0; }
+fieldset.where legend { font-weight: 800; padding: 0 6px; }
+fieldset.where select { width: 100%; }
+.nav a.navdonate { color: var(--green); font-weight: 800; }
+.hero-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+
+/* Fund gift rows: no avatar column */
+.don.noav{grid-template-columns:minmax(0,1fr) auto}
+.don.noav p{overflow-wrap:break-word}
+/* home stats: big national numbers must fit two-up on small phones */
+@media (max-width:760px){.stat .num{font-size:clamp(18px,5.6vw,26px)}}
+@media (max-width:420px){.stat + .stat{padding-left:12px}}

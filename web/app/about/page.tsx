@@ -25,6 +25,7 @@ export default async function About() {
         </p>
         <div className="about-ctas">
           <Link className="btn btn-green" href="/start">Start a campaign</Link>
+          <Link className="btn btn-ghost" href="/donate">Donate to the Fund</Link>
           <Link className="btn btn-ghost" href="/">Explore the map</Link>
         </div>
       </section>
@@ -91,13 +92,14 @@ export default async function About() {
           <details><summary>Why does an area need {min} children?</summary><p>The law sets that minimum for gifts defined by a geographic area. Smaller towns can still qualify by pooling neighboring ZIP codes, which is what our matching is for.</p></details>
           <details><summary>Can I give stock or use a donor-advised fund?</summary><p>Yes. Choose them on your giving profile. Stock given to children&apos;s accounts must be shares of publicly traded U.S. companies, and they stay in the account for 5 years, or until the childStock given to children&apos;s accounts must be publicly traded U.S. company shares, held until the child turns 18 or for 5 years.apos;s 18th year if that comes first.</p></details>
           <details><summary>What if Treasury says no?</summary><p>The funds stay with the nonprofit, and the coalition agrees, through a new agreement everyone signs, what to do next: revise and resend, or direct the money elsewhere.</p></details>
+          <details><summary>Can I just donate, without running a campaign?</summary><p>Yes. <Link href="/donate">Give to the Hometown Seed Fund</Link>, once or monthly, and choose where it goes: wherever it&apos;s needed most, a state, or a ZIP code. The Fund adds to coalitions there when they go to Treasury.</p></details>
           <details><summary>How is this different from the big pledges on the map?</summary><p>Those are gifts announced by individual philanthropists and companies, shown for context. Hometown Seed is for everyone else: neighbors pooling smaller gifts so they add up to every child in a place.</p></details>
         </div>
       </section>
 
       <section className="wrap section about-close">
         <h2>Start with the place you care about.</h2>
-        <div className="about-ctas"><Link className="btn btn-green" href="/start">Start a campaign</Link><Link className="btn btn-ghost" href="/match">Find partners</Link></div>
+        <div className="about-ctas"><Link className="btn btn-green" href="/start">Start a campaign</Link><Link className="btn btn-ghost" href="/donate">Donate</Link><Link className="btn btn-ghost" href="/match">Find partners</Link></div>
       </section>
     </main>
   );

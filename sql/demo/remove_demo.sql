@@ -12,6 +12,8 @@ select delete_campaign(id) from campaigns where is_demo;
 -- pledges demo people made to anyone else's campaigns (promises only)
 delete from pledges where user_id in (select id from app_users where email like '%@demo.hometownseed.org')
   and id not in (select pledge_id from ledger_entries where pledge_id is not null);
+-- demo gifts to the Fund
+delete from fund_donations where id::text like 'de000000-0000-4000-e000-%';
 -- demo people (and everything attached to them)
 select delete_account(id) from app_users where email like '%@demo.hometownseed.org';
 -- the fictional demo nonprofit

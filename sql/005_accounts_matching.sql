@@ -67,7 +67,8 @@ where a.target_kind = 'person' and a.decision = 'like';
 -- The deck ----------------------------------------------------------------------
 -- Campaigns and people ranked for one user. Priorities: location first, then
 -- dollars per child, then age group, then gift type.
-create or replace function match_deck(p_user uuid, p_limit int default 30)
+drop function if exists match_deck(uuid, int);
+create or replace function match_deck(p_user uuid, p_limit int default 30, p_kind text default null)
 returns table (
     kind            text,       -- 'campaign' | 'person'
     id              uuid,
@@ -98,7 +99,8 @@ language sql stable set jit = off as $$
                s.raised_cents::numeric as raised, s.goal_cents::numeric as goal,
                array['cash', 'stock', 'daf']::text[] as gifts, s.min_age::int as min_age, s.max_age::int as max_age,
                s.zctas::char(5)[] as zips, s.all_low_income,
-               (select min(z.median_hh_income) from zcta_stats z where z.zcta = any(s.zctas::char(5)[])) as min_income
+               (select min(z.median_hh_income) from zcta_stats z where z.zcta = any(s.zctas::char(5)[])) as min_income,
+               s.created_at as fresh
         from v_campaign_stats s
         where s.status = 'active'
           and not exists (select 1 from campaign_members m where m.campaign_id = s.id and m.user_id = p_user)
@@ -110,7 +112,7 @@ language sql stable set jit = off as $$
                g.anchor_lat, g.anchor_lon, g.per_child_cents::numeric, null::numeric,
                null::numeric, g.budget_cents::numeric,
                g.gift_types, g.min_age::int, g.max_age::int,
-               g.target_zips, null::boolean, null::int
+               g.target_zips, null::boolean, null::int, g.updated_at
         from giving_profiles g join app_users u on u.id = g.user_id
         where g.open_to_match and g.user_id <> p_user
           and not exists (select 1 from swipes w where w.user_id = p_user and w.target_kind = 'person' and w.target_id = g.user_id)
@@ -154,7 +156,8 @@ language sql stable set jit = off as $$
            ], null)
     from calc c
     where not (c.income_focus = 'below_threshold' and c.kind = 'campaign' and c.all_low_income is false)
-    order by 15 desc, c.raised desc nulls last
+      and (p_kind is null or c.kind = p_kind)
+    order by 15 desc, c.raised desc nulls last, c.fresh desc   -- ties: most recently active first
     limit p_limit
 $$;
 

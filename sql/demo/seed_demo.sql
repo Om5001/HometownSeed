@@ -353,3 +353,16 @@ insert into demo_local_nonprofits (ein, name, city, zip, focus, source_url) valu
  ('223232968', 'Cary Institute of Ecosystem Studies',          'Millbrook',    '12545', 'Environmental research',         'https://projects.propublica.org/nonprofits/organizations/223232968'),
  ('136078769', 'Millbrook Library Trust',                      'Millbrook',    '12545', 'Library support',                'https://projects.propublica.org/nonprofits/organizations/136078769')
 on conflict (ein) do update set name = excluded.name, city = excluded.city, zip = excluded.zip, focus = excluded.focus, source_url = excluded.source_url;
+
+-- Demo gifts to the Hometown Seed Fund
+do $$
+begin
+  if to_regclass('public.fund_donations') is not null then
+    insert into fund_donations (id, user_id, donor_name, is_anonymous, amount_cents, frequency, designation, state, zcta, message, created_at) values
+     ('de000000-0000-4000-e000-000000000001', 'de000000-0000-4000-8000-000000000015', 'Elena Petrova', false, 2500000, 'once', 'state', 'NY', null, 'For New York kids wherever a coalition is ready.', now() - interval '12 days'),
+     ('de000000-0000-4000-e000-000000000002', 'de000000-0000-4000-8000-000000000010', 'Linda Chen', false, 2500, 'monthly', 'anywhere', null, null, null, now() - interval '9 days'),
+     ('de000000-0000-4000-e000-000000000003', 'de000000-0000-4000-8000-000000000009', 'Sam Okafor', true, 100000, 'once', 'zip', null, '12545', null, now() - interval '4 days'),
+     ('de000000-0000-4000-e000-000000000004', 'de000000-0000-4000-8000-000000000002', 'Maria Alvarez', false, 5000, 'monthly', 'zip', null, '12501', 'Amenia, always.', now() - interval '2 days')
+    on conflict (id) do update set created_at = excluded.created_at;
+  end if;
+end $$;

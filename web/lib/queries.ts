@@ -256,12 +256,12 @@ export type DeckCard = {
   nonprofit?: string | null;   // people: the 501(c)(3) they represent
 };
 
-export async function getDeck(userId: string, limit = 30) {
+export async function getDeck(userId: string, limit = 30, kind: "campaign" | "person" | null = null) {
   const cards = await db()<DeckCard[]>`
     select kind, id, slug, title, subtitle, miles::float8 as miles, per_child_cents::float8 as per_child_cents,
            kids::float8 as kids, raised_cents::float8 as raised_cents, goal_cents::float8 as goal_cents,
            gift_types, min_age, max_age, shared_zips, score::float8 as score, reasons
-    from match_deck(${userId}, ${limit})`;
+    from match_deck(${userId}, ${limit}, ${kind})`;
   const people = cards.filter((c) => c.kind === "person").map((c) => c.id);
   if (people.length) {
     const reps = await db()<{ user_id: string; name: string }[]>`

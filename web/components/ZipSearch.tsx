@@ -30,8 +30,8 @@ export function ZipSearch({ onPick, placeholder = "Enter a ZIP code or city", bu
     }, 180);
   }, [q]);
   const pick = (h: Hit) => { seq.current++; setQ(""); setHits([]); setErr(""); onPick ? onPick(h) : router.push(`/zip/${h.zcta}`); };
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: { preventDefault(): void }) => {
+    e?.preventDefault();
     const v = q.trim();
     if (v.length < 2) return setErr("Enter a 5-digit ZIP code or a city name.");
     // Pressing Enter before the suggestions arrive: look it up now instead of reporting "not found".
@@ -47,13 +47,14 @@ export function ZipSearch({ onPick, placeholder = "Enter a ZIP code or city", bu
   };
   return (
     <div className="combo">
-      <form className={"search" + (mini ? " mini" : "")} onSubmit={submit} noValidate>
+      {/* not a <form>: this box is used inside other forms (Donate, Profile), and forms can't nest */}
+      <div className={"search" + (mini ? " mini" : "")} role="search">
         <label>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" style={{ color: "var(--muted)", flex: "none" }}><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder} autoComplete="off" autoFocus={autoFocus} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(e); }} placeholder={placeholder} aria-label={placeholder} autoComplete="off" autoFocus={autoFocus} />
         </label>
-        <button className="btn btn-green" type="submit" disabled={looking}>{looking ? "…" : button}</button>
-      </form>
+        <button className="btn btn-green" type="button" onClick={() => submit()} disabled={looking}>{looking ? "…" : button}</button>
+      </div>
       {hits.length > 0 && (
         <div className="sugg" role="listbox">
           {hits.map((h) => (

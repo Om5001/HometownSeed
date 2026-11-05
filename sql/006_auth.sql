@@ -74,6 +74,9 @@ begin
     -- Detach everything that points at the person (explicit, so it never depends on FK settings)
     update pledges set donor_name = 'Deleted account', donor_email = null, is_anonymous = true, user_id = null
     where user_id = p_user;
+    if to_regclass('public.fund_donations') is not null then   -- gifts to the Hometown Seed Fund (sql/010)
+        execute 'update fund_donations set donor_name = ''Deleted account'', is_anonymous = true, user_id = null where user_id = $1' using p_user;
+    end if;
     update audit_log set actor_id = null where actor_id = p_user;
     update pools set created_by = null where created_by = p_user;
     update invites set accepted_by = null where accepted_by = p_user;

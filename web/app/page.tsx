@@ -23,7 +23,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           </div>
           <div>
             <p className="lede">Pick the ZIP codes you care about and how much you hope to raise. We match you with people raising for the same kids or at the same amount per child, so together you reach the {fmt(rules.min_beneficiaries)} kids an area needs to qualify. Run it with friends, on your own, or pooled with others.</p>
-            <Link className="hero-about" href="/about">About Hometown Seed, a 501(c)(3) nonprofit →</Link>
+            <div className="hero-links">
+              <Link className="hero-about" href="/about">About Hometown Seed, a 501(c)(3) →</Link>
+              <Link className="hero-about" href="/donate">Donate to the Hometown Seed Fund →</Link>
+            </div>
             <div style={{ marginTop: 18 }}><ZipSearch /></div>
           </div>
         </div>

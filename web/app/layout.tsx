@@ -48,20 +48,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="navlink wide-only" href="/match">Find partners</Link>
                   <Link className="navlink keep navmsg" href="/messages" aria-label="Messages"><span className="msg-word">Messages</span><span className="msg-icon" aria-hidden="true">✉</span><UnreadBadge initial={unread} /></Link>
                   <Link className="navlink wide-only" href="/me">My campaigns</Link>
-                  <Link className="navlink wide-only" href="/nonprofits">Nonprofits</Link>
-                  <Link className="navlink wide-only" href="/account">Profile</Link>
-                  <span className="wide-only"><SignOutButton /></span>
+                  <Link className="navlink wide-only" href="/about">About</Link>
+                  <Link className="navlink wide-only navdonate" href="/donate">Donate</Link>
                   <NavMenu signOut links={[{ href: "/match", label: "Find partners" }, { href: "/messages", label: "Messages" }, { href: "/me", label: "My campaigns" },
-                    { href: "/connections", label: "Saved and invites" }, { href: "/nonprofits", label: "Nonprofits" }, { href: "/about", label: "About" }, { href: "/account", label: "Profile" }]} />
+                    { href: "/connections", label: "Saved and invites" }, { href: "/donate", label: "Donate" }, { href: "/nonprofits", label: "Nonprofits" },
+                    { href: "/about", label: "About Hometown Seed" }, { href: "/account", label: "Profile and settings" }]} />
                   <Link className="btn btn-green btn-sm" href="/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               ) : (
                 <>
                   <Link className="navlink wide-only" href="/#campaigns">Campaigns</Link>
                   <Link className="navlink wide-only" href="/about">About</Link>
-                  <Link className="navlink wide-only" href="/nonprofits">Nonprofits</Link>
+                  <Link className="navlink wide-only navdonate" href="/donate">Donate</Link>
                   <Link className="navlink keep" href="/signin">Sign in</Link>
-                  <NavMenu links={[{ href: "/#campaigns", label: "Campaigns" }, { href: "/about", label: "About" }, { href: "/nonprofits", label: "Nonprofits" }]} />
+                  <NavMenu links={[{ href: "/#campaigns", label: "Campaigns" }, { href: "/donate", label: "Donate" }, { href: "/nonprofits", label: "Nonprofits" }, { href: "/about", label: "About Hometown Seed" }]} />
                   <Link className="btn btn-green btn-sm" href="/signin?mode=signup&next=/start"><span className="long">Start a campaign</span><span className="short">Start</span></Link>
                 </>
               )}
